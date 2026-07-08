@@ -1,0 +1,37 @@
+# Resume Detective — .gitignore
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+
+# 用户数据（本地数据库、配置、附件）
+data/config.json
+data/data.db
+data/Resumes/
+data/Attachments/
+data/chat_history/
+data/reasonix/
+
+# Reasonix CLI 二进制（用户自行下载）
+Reasonix Cli/
+
+# PyInstaller 构建产物（你打包时产生的）
+dist/
+build/
+
+# 虚拟环境
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
