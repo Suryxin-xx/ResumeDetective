@@ -1,2 +1,0 @@
-# 占位文件——确保 data/ 目录被 git 跟踪。
-# 实际数据文件（config.json / data.db / Resumes/ 等）由程序首次运行时自动创建。

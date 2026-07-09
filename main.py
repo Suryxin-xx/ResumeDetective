@@ -7,8 +7,8 @@ import sys
 
 from PyQt6.QtWidgets import QApplication
 
-from resumedetective import db_manager
-from resumedetective import paths
+import db_manager
+import paths
 
 
 def main():
@@ -31,5 +31,5 @@ def main():
 
 if __name__ == "__main__":
     # 延迟导入避免循环
-    from resumedetective.main_window import MainWindow
+    from main_window import MainWindow
     main()

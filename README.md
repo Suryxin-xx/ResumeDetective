@@ -1,102 +1,118 @@
-# Resume Detective (简历侦探)
+# Resume Detective
 
-> \*\*本地优先的 AI 求职工作台\*\* — 投递管理 · 意向追踪 · AI 简历助手  
-> 面向秋招/社招的 100% 离线桌面工具。
+本地优先的秋招求职桌面工具，聚焦投递追踪、意向公司管理、资料库整理和 AI 求职辅助。
 
-\---
+## 功能概览
 
-## ✨ 功能
+- 投递看板：拖拽切换投递状态，快速查看当前进度。
+- 表格视图：适合高密度信息浏览、筛选和排序。
+- 投递详情：记录 JD、反馈、下一步动作和附件。
+- 意向公司：单独维护目标公司与岗位 JD，可一键转为投递。
+- 资料库：维护个人信息、经历碎片、项目素材与简历生成材料。
+- AI 助手：支持 API 直连与 Reasonix CLI，可做 JD 分析、匹配分析、简历草稿、自我介绍等。
+- 工具页：集成 PDF 与图片相关辅助工具。
 
-|功能|说明|
-|-|-|
-|📋 **泳道看板**|7 列状态泳道，鼠标拖拽切换阶段|
-|📊 **表格视图**|信息密度更高的表格模式，支持排序/筛选|
-|📝 **投递详情**|双击卡片弹出详情，含城市/附件/JD/自动保存|
-|📎 **附件管理**|每个投递可挂载多个附件，一键打开/回收站删除|
-|🏢 **意向公司**|独立页面维护 JD 池，优先级排序，一键转投递|
-|🤖 **AI 助手**|DeepSeek 流式对话，JD 分析/简历初稿/匹配分析/经历重写/自我介绍|
-|📚 **资料库**|个人经历碎片管理 + 个人信息表单|
-|🛠 **工具集成**|PDF→图片、文档→图片版 PDF 内嵌工具|
-|🔒 **API Key 加密**|Windows DPAPI 加密存储，不写明文|
+## 界面截图
 
-## 🚀 快速开始
+截图请放入 [screenshots](E:\Agent\Project\Job\Gadgets\ResumeDetective\screenshots) 文件夹，建议至少准备：
 
-### 方式一：下载 EXE（推荐）
+- `board.png`：投递看板
+- `materials.png`：资料库
+- `ai.png`：AI 助手
+- `targets.png`：意向公司
 
-1. 从 [Releases](https://github.com/your-username/ResumeDetective/releases) 下载最新版 `ResumeDetective.zip`
-2. 解压到任意目录，进入 `ResumeDetective/` 文件夹，运行 `ResumeDetective.exe`
-3. （可选）将 [Reasonix CLI](https://github.com/your-username/reasonix-cli) 放入 `Reasonix Cli/reasonix.exe` 获得增强 AI 能力
+示例引用模板：
 
-### 方式二：源码运行
-
-```bash
-# 1. 克隆仓库
-git clone https://github.com/your-username/ResumeDetective.git
-cd ResumeDetective
-
-# 2. 安装依赖
-pip install PyQt6 openpyxl PyMuPDF requests Pillow
-
-# 3. 启动
-python main.py
+```md
+![投递看板](screenshots/board.png)
+![AI 助手](screenshots/ai.png)
 ```
 
-## ⚙️ AI 配置
+## 下载与使用
 
-AI 助手支持两种模式：
+### 普通用户
 
-|模式|说明|需要|
-|-|-|-|
-|**API 直连（推荐）**|直接调用 DeepSeek API|DeepSeek API Key（AI 页面设置）|
-|**Reasonix CLI**|本地 CLI 调用，管理多个 Provider|自行下载 Reasonix CLI 到 `Reasonix Cli/reasonix.exe`|
+请从 GitHub Releases 下载打包好的 Windows 版本。
 
-## 🗂 项目结构
+注意：
 
-```
+- 不要只拿走 `ResumeDetective.exe`
+- 要把整个发布文件夹完整解压后再运行
+- 首次使用时自行输入 API Key，程序会在本地加密保存
+
+### 源码用户
+
+1. 安装 Python 3.11 及以上版本
+2. 运行 [install.bat](E:\Agent\Project\Job\Gadgets\ResumeDetective\install.bat)
+3. 执行 `python main.py`
+
+## AI 配置
+
+程序支持两种 AI 通道：
+
+- API 直连：推荐，配置最简单
+- Reasonix CLI：可选增强模式，只识别程序目录内的 `Reasonix Cli\reasonix.exe`
+
+说明：
+
+- 发布包不会附带开发者自己的 API Key
+- 用户第一次输入后，Key 会保存在本机加密存储中
+- Reasonix 运行时配置固定在程序自身 `data\reasonix` 目录
+
+## 项目结构
+
+```text
 ResumeDetective/
-├── main.py                 # 入口
-├── resumedetective/        # 核心包（20 个模块）
-│   ├── \_\_init\_\_.py
-│   ├── main\_window.py      # 主窗口（5 Tab）
-│   ├── board\_widget.py     # 泳道看板
-│   ├── table\_view.py       # 表格视图
-│   ├── detail\_dialog.py    # 投递详情弹窗
-│   ├── dialogs.py          # 新增投递弹窗
-│   ├── job\_targets\_widget.py # 意向公司管理
-│   ├── materials\_widget.py # 资料库
-│   ├── ai\_service.py       # AI 服务
-│   ├── cli\_ai.py           # Reasonix CLI 适配
-│   ├── config\_manager.py   # 配置管理
-│   ├── secure\_store.py     # 加密存储（DPAPI）
-│   ├── db\_manager.py       # SQLite CRUD
-│   ├── chat\_history.py     # 聊天历史
-│   ├── io\_export.py        # Excel 导入导出
-│   ├── file\_ops.py         # 回收站删除
-│   ├── tools\_pdf2img.py    # PDF→图片
-│   ├── tools\_imgpdf.py     # 文档→图片版 PDF
-│   ├── paths.py            # 路径常量
-│   └── models.py           # 数据类
-├── install.bat             # 一键安装脚本
-├── ResumeDetective.spec    # PyInstaller 打包配置
-└── data/                   # 自动创建
-    ├── config.json
-    ├── data.db
-    ├── Resumes/
-    ├── chat\_history/
-    ├── Attachments/
-    └── reasonix/
+  main.py
+  main_window.py
+  board_widget.py
+  table_view.py
+  detail_dialog.py
+  dialogs.py
+  materials_widget.py
+  job_targets_widget.py
+  ai_service.py
+  cli_ai.py
+  db_manager.py
+  config_manager.py
+  secure_store.py
+  chat_history.py
+  io_export.py
+  file_ops.py
+  tools_pdf2img.py
+  tools_imgpdf.py
+  paths.py
+  ResumeDetective.spec
+  install.bat
+  scripts/
+  screenshots/
+  data/
 ```
 
-## 🧪 技术栈
+## 发布说明
 
-* **Python 3.14** / **PyQt6** / **SQLite**
-* **openpyxl**（Excel 导入导出）
-* **PyMuPDF**（PDF 处理）
-* **Pillow**（图片转换）
-* **requests**（API 调用）
-* **comtypes**（Windows 回收站）
+推荐采用两层发布：
 
-## 📄 许可
+- GitHub 仓库：上传干净源码副本
+- GitHub Releases：上传打包好的 Windows 文件夹压缩包
 
-MIT License
+发布前可运行：
 
+- [build_release.ps1](E:\Agent\Project\Job\Gadgets\ResumeDetective\scripts\build_release.ps1)
+
+这个脚本会生成一份干净的 `build\release-src`，自动排除本机测试数据、聊天记录、数据库和密钥。
+
+## 技术栈
+
+- Python
+- PyQt6
+- SQLite
+- requests
+- openpyxl
+- PyMuPDF
+- Pillow
+- comtypes
+
+## License
+
+MIT
