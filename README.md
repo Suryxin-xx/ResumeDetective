@@ -20,12 +20,16 @@
 - `materials.png`：资料库
 - `ai.png`：AI 助手
 - `targets.png`：意向公司
+- `tools.png`：小工具
 
 示例引用模板：
 
 ```md
 ![投递看板](screenshots/board.png)
+![资料库](screenshots/materials.png)
 ![AI 助手](screenshots/ai.png)
+![意向公司](screenshots/targets.png)
+![小工具](screenshots/tools.png)
 ```
 
 ## 下载与使用
