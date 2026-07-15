@@ -6,21 +6,26 @@ PyInstaller 打包配置
 
 import os
 import sys
+from pathlib import Path
 
 block_cipher = None
+
+reasonix_dir = Path('Reasonix Cli')
+optional_binaries = []
+optional_datas = []
+reasonix_exe = reasonix_dir / 'reasonix.exe'
+if reasonix_exe.exists():
+    optional_binaries.append((str(reasonix_exe), 'Reasonix Cli'))
+for name in ('README.md', 'README.zh-CN.md', 'LICENSE', 'CHANGELOG.md'):
+    candidate = reasonix_dir / name
+    if candidate.exists():
+        optional_datas.append((str(candidate), 'Reasonix Cli'))
 
 a = Analysis(
     ['main.py'],
     pathex=['.'],
-    binaries=[
-        ('Reasonix Cli\\reasonix.exe', 'Reasonix Cli'),
-    ],
-    datas=[
-        ('Reasonix Cli\\README.md', 'Reasonix Cli'),
-        ('Reasonix Cli\\README.zh-CN.md', 'Reasonix Cli'),
-        ('Reasonix Cli\\LICENSE', 'Reasonix Cli'),
-        ('Reasonix Cli\\CHANGELOG.md', 'Reasonix Cli'),
-    ],
+    binaries=optional_binaries,
+    datas=optional_datas,
     hiddenimports=[
         'PyQt6',
         'PyQt6.QtCore',
@@ -43,11 +48,15 @@ a = Analysis(
         'tools_pdf2img',
         'tools_imgpdf',
         'job_targets_widget',
+        'tasks_widget',
+        'local_gateway',
+        'excel_sync',
         'secure_store',
         'file_ops',
         'PIL',
         'fitz',
         'openpyxl',
+        'openpyxl.worksheet.table',
         'requests',
         'comtypes',
     ],

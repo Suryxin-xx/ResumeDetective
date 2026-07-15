@@ -38,6 +38,9 @@ class JobDetailDialog(QDialog):
         self.edit_company.textChanged.connect(lambda: self._defer("company"))
         self.edit_position.textChanged.connect(lambda: self._defer("position"))
         self.edit_city.textChanged.connect(lambda: self._defer("city"))
+        self.edit_source.textChanged.connect(lambda: self._defer("application_source"))
+        self.edit_job_link.textChanged.connect(lambda: self._defer("job_link"))
+        self.edit_jd.textChanged.connect(lambda: self._defer("jd_text"))
         self.edit_feedback.textChanged.connect(lambda: self._defer("feedback"))
         self.edit_next.textChanged.connect(lambda: self._defer("next_action"))
         self.edit_priority.valueChanged.connect(lambda: self._defer("priority"))
@@ -74,6 +77,17 @@ class JobDetailDialog(QDialog):
         info_row.addWidget(status)
         layout.addLayout(info_row)
 
+        source_row = QHBoxLayout()
+        source_row.addWidget(QLabel("投递来源："))
+        self.edit_source = QLineEdit(data.get("application_source", ""))
+        self.edit_source.setPlaceholderText("官网 / 内推 / 牛客 / 招聘群")
+        source_row.addWidget(self.edit_source, stretch=1)
+        source_row.addWidget(QLabel("岗位链接："))
+        self.edit_job_link = QLineEdit(data.get("job_link", ""))
+        self.edit_job_link.setPlaceholderText("https://...")
+        source_row.addWidget(self.edit_job_link, stretch=2)
+        layout.addLayout(source_row)
+
         # ── 简历 ──
         resume_row = QHBoxLayout()
         self.lbl_resume = QLabel(f"📄 {data.get('file_path') or '无简历'}")
@@ -89,11 +103,11 @@ class JobDetailDialog(QDialog):
         # ── JD ──
         jdg = QGroupBox("JD")
         jdl = QVBoxLayout(jdg)
-        jd = QTextEdit()
-        jd.setReadOnly(True)
-        jd.setMaximumHeight(80)
-        jd.setText(data.get("jd_text", ""))
-        jdl.addWidget(jd)
+        self.edit_jd = QTextEdit()
+        self.edit_jd.setMaximumHeight(110)
+        self.edit_jd.setPlaceholderText("粘贴并保存 JD 原文，避免岗位关闭后内容丢失")
+        self.edit_jd.setText(data.get("jd_text", ""))
+        jdl.addWidget(self.edit_jd)
         layout.addWidget(jdg)
 
         # ── 反馈 ──
@@ -167,29 +181,24 @@ class JobDetailDialog(QDialog):
             return
         f = self._save_field
         try:
-            conn = db_manager.get_connection()
-            try:
-                if f == "company":
-                    conn.execute("UPDATE resumes SET company_name=? WHERE id=?",
-                                 (self.edit_company.text(), self._resume_id))
-                elif f == "position":
-                    conn.execute("UPDATE resumes SET position_name=? WHERE id=?",
-                                 (self.edit_position.text(), self._resume_id))
-                elif f == "city":
-                    conn.execute("UPDATE resumes SET city=? WHERE id=?",
-                                 (self.edit_city.text(), self._resume_id))
-                elif f == "feedback":
-                    conn.execute("UPDATE applications SET interview_feedback=? WHERE id=?",
-                                 (self.edit_feedback.toPlainText(), self._app_id))
-                elif f == "next_action":
-                    conn.execute("UPDATE applications SET next_action=? WHERE id=?",
-                                 (self.edit_next.toPlainText(), self._app_id))
-                elif f == "priority":
-                    conn.execute("UPDATE applications SET priority=? WHERE id=?",
-                                 (self.edit_priority.value(), self._app_id))
-                conn.commit()
-            finally:
-                conn.close()
+            if f == "company":
+                db_manager.update_resume_details(self._resume_id, company_name=self.edit_company.text())
+            elif f == "position":
+                db_manager.update_resume_details(self._resume_id, position_name=self.edit_position.text())
+            elif f == "city":
+                db_manager.update_resume_details(self._resume_id, city=self.edit_city.text())
+            elif f == "application_source":
+                db_manager.update_resume_details(self._resume_id, application_source=self.edit_source.text())
+            elif f == "job_link":
+                db_manager.update_resume_details(self._resume_id, job_link=self.edit_job_link.text())
+            elif f == "jd_text":
+                db_manager.update_resume_details(self._resume_id, jd_text=self.edit_jd.toPlainText())
+            elif f == "feedback":
+                db_manager.update_application_details(self._app_id, interview_feedback=self.edit_feedback.toPlainText())
+            elif f == "next_action":
+                db_manager.update_application_details(self._app_id, next_action=self.edit_next.toPlainText())
+            elif f == "priority":
+                db_manager.update_application_details(self._app_id, priority=self.edit_priority.value())
         except Exception:
             pass
         self._save_field = None
@@ -203,12 +212,7 @@ class JobDetailDialog(QDialog):
             company = self.edit_company.text().strip() or "未命名公司"
             position = self.edit_position.text().strip() or "未命名岗位"
             rel_path = AddResumeDialog.copy_file_to_resumes(p, company, position)
-            conn = db_manager.get_connection()
-            try:
-                conn.execute("UPDATE resumes SET file_path=? WHERE id=?", (rel_path, self._resume_id))
-                conn.commit()
-            finally:
-                conn.close()
+            db_manager.update_resume_details(self._resume_id, file_path=rel_path)
             self.lbl_resume.setText(f"📄 {paths.RESUMES_DIR.joinpath(rel_path.split('/')[-1]).name}")
             QMessageBox.information(self, "完成", "简历已更新。")
         except Exception as e:

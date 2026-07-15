@@ -13,9 +13,9 @@ from PyQt6.QtWidgets import (
     QListWidgetItem, QFileDialog, QMessageBox, QApplication, QComboBox,
     QGroupBox, QLineEdit, QFormLayout, QSpinBox, QDialogButtonBox,
     QAbstractItemView,
-    QDialog,
+    QDialog, QScrollBar, QScrollArea, QGridLayout,
 )
-from PyQt6.QtCore import Qt, QSize, QTimer, pyqtSignal
+from PyQt6.QtCore import QByteArray, Qt, QSize, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont, QColor, QAction, QTextCursor
 
 import db_manager
@@ -23,12 +23,14 @@ import config_manager
 import cli_ai
 import ai_service
 import paths
+import local_gateway
 import chat_history as ch
 from board_widget import BoardWidget
 from table_view import TableView
 from detail_dialog import JobDetailDialog
 from materials_widget import MaterialsWidget
 from job_targets_widget import JobTargetsWidget
+from tasks_widget import TasksWidget
 
 STATUS_COLORS = {
     "已投递": "#BBDEFB", "简历初筛": "#FFE0B2", "笔试/无笔试": "#E1BEE7",
@@ -51,6 +53,13 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("简历侦探 Resume Detective")
         self.resize(1280, 780)
+        self.setMinimumSize(960, 640)
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowType.WindowMinMaxButtonsHint
+            | Qt.WindowType.WindowCloseButtonHint
+        )
+        self.statusBar().setSizeGripEnabled(True)
 
         # 全局字体放大
         font = QFont("Microsoft YaHei", 10)
@@ -88,6 +97,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.tabs)
 
         self._init_board_page()
+        self._init_tasks_page()
         self._init_materials_page()
         self._init_ai_page()
         self._init_job_targets_page()
@@ -95,6 +105,7 @@ class MainWindow(QMainWindow):
 
         self._tab_defs = [
             ("board", self.page_board, "📋 投递看板"),
+            ("tasks", self.page_tasks, "✓ 行动清单"),
             ("materials", self.page_materials, "📚 资料库"),
             ("ai", self.page_ai, "🤖 AI 助手"),
             ("targets", self.page_job_targets, "🎯 意向公司"),
@@ -102,6 +113,7 @@ class MainWindow(QMainWindow):
         ]
         self._restore_tab_order()
         self._apply_apple_style()
+        self._restore_window_geometry()
 
         self.statusBar().showMessage("就绪", 3000)
 
@@ -111,6 +123,7 @@ class MainWindow(QMainWindow):
         current = self.tabs.widget(idx)
         page_board = getattr(self, "page_board", None)
         page_materials = getattr(self, "page_materials", None)
+        page_tasks = getattr(self, "page_tasks", None)
         page_job_targets = getattr(self, "page_job_targets", None)
         page_ai = getattr(self, "page_ai", None)
 
@@ -119,6 +132,8 @@ class MainWindow(QMainWindow):
             self._refresh_ai_context_picker()
         elif current is page_materials and hasattr(self, 'materials_widget'):
             self.materials_widget.refresh()
+        elif current is page_tasks and hasattr(self, 'tasks_widget'):
+            self.tasks_widget.refresh()
         elif current is page_job_targets and hasattr(self, 'job_targets_widget'):
             self.job_targets_widget.refresh()
             self._refresh_ai_context_picker()
@@ -159,11 +174,33 @@ class MainWindow(QMainWindow):
         self._restore_tab_order()
         self.statusBar().showMessage("已恢复默认工具栏顺序", 3000)
 
+    def _restore_window_geometry(self):
+        """Restore a previous size without ever preventing the user from resizing the window."""
+        geometry = config_manager.get_window_geometry()
+        if not geometry:
+            return
+        try:
+            self.restoreGeometry(QByteArray.fromBase64(geometry.encode("ascii")))
+        except Exception:
+            # A stale layout record should never block application startup.
+            pass
+
+    def closeEvent(self, event):
+        try:
+            geometry = bytes(self.saveGeometry().toBase64()).decode("ascii")
+            config_manager.set_window_geometry(geometry)
+        except Exception:
+            pass
+        super().closeEvent(event)
+
     def _apply_apple_style(self):
         self.setStyleSheet("""
             QMainWindow, QWidget {
                 background: #f5f5f7;
                 color: #1d1d1f;
+            }
+            QTabWidget {
+                background: transparent;
             }
             QTabWidget::pane {
                 border: 1px solid #d8d8de;
@@ -178,9 +215,10 @@ class MainWindow(QMainWindow):
                 border-bottom: none;
                 border-top-left-radius: 14px;
                 border-top-right-radius: 14px;
-                padding: 10px 18px;
+                padding: 8px 15px;
                 margin-right: 6px;
-                min-width: 110px;
+                min-width: 96px;
+                font-weight: 600;
             }
             QTabBar::tab:selected {
                 background: #ffffff;
@@ -212,6 +250,18 @@ class MainWindow(QMainWindow):
             QPushButton:pressed {
                 background: #e7ebf0;
             }
+            QPushButton[class="primary"] {
+                background: #0071e3;
+                color: #ffffff;
+                border-color: #0071e3;
+                font-weight: 700;
+            }
+            QPushButton[class="primary"]:hover {
+                background: #0077ed;
+            }
+            QPushButton[class="destructive"] {
+                color: #b42318;
+            }
             QLineEdit, QTextEdit, QComboBox, QListWidget, QTableWidget {
                 background: #ffffff;
                 border: 1px solid #d8d8de;
@@ -231,16 +281,70 @@ class MainWindow(QMainWindow):
                 border: none;
                 background: transparent;
             }
-            QComboBox::down-arrow {
-                width: 10px;
-                height: 10px;
-            }
             QTextEdit {
                 padding: 8px 10px;
+            }
+            QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QListWidget:focus, QTableWidget:focus {
+                border: 2px solid #0071e3;
             }
             QListWidget::item:selected, QTableWidget::item:selected {
                 background: #dfeaf7;
                 color: #1d1d1f;
+            }
+            QTableWidget {
+                gridline-color: #ececf1;
+                alternate-background-color: #f8f8fa;
+            }
+            QHeaderView::section {
+                background: #f5f5f7;
+                color: #6e6e73;
+                border: none;
+                border-bottom: 1px solid #d8d8de;
+                padding: 9px 8px;
+                font-weight: 700;
+            }
+            QSplitter::handle {
+                background: #e5e5ea;
+                margin: 5px 1px;
+            }
+            QSplitter::handle:hover {
+                background: #c7c7cc;
+            }
+            QLabel#pageTitle {
+                color: #1d1d1f;
+                font-size: 22px;
+                font-weight: 700;
+                background: transparent;
+            }
+            QLabel#pageSubtitle {
+                color: #6e6e73;
+                font-size: 12px;
+                background: transparent;
+            }
+            QLabel#taskSummary {
+                color: #355c7d;
+                background: #eef4ff;
+                border: 1px solid #d6e2f5;
+                border-radius: 12px;
+                padding: 8px 12px;
+                font-weight: 700;
+            }
+            QScrollBar#chatScrollBar::groove:vertical {
+                width: 8px;
+                background: #e5e7eb;
+                border-radius: 4px;
+                margin: 4px 5px;
+            }
+            QScrollBar#chatScrollBar::handle:vertical {
+                min-height: 52px;
+                width: 18px;
+                margin: 0 -4px;
+                background: #8aa9c8;
+                border: 1px solid #6d90b4;
+                border-radius: 9px;
+            }
+            QScrollBar#chatScrollBar::handle:vertical:hover {
+                background: #5f8fbe;
             }
             QScrollBar:vertical {
                 background: transparent;
@@ -347,6 +451,8 @@ class MainWindow(QMainWindow):
                 rid = db_manager.add_resume(
                     data["company_name"], data["position_name"], file_path,
                     jd_text=data["jd_text"], version_note=data.get("version_note", ""),
+                    application_source=data.get("application_source", ""),
+                    job_link=data.get("job_link", ""),
                 )
                 if rid:
                     db_manager.add_application(rid)
@@ -434,6 +540,7 @@ class MainWindow(QMainWindow):
             return
         selected_keys = self._selected_context_keys()
         keyword = self.ai_context_filter.text().strip().lower() if hasattr(self, "ai_context_filter") else ""
+        self.ai_context_list.setVisible(bool(keyword) or bool(selected_keys))
         self.ai_context_list.blockSignals(True)
         self.ai_context_list.clear()
 
@@ -446,6 +553,8 @@ class MainWindow(QMainWindow):
                 app.get("jd_text", ""),
             ]).lower()
             if keyword and keyword not in haystack:
+                continue
+            if not keyword and ("app", app["id"]) not in selected_keys:
                 continue
             label = f"[投递] {app.get('company_name','')} - {app.get('position_name','')}"
             extras = [x for x in [app.get("current_status", ""), app.get("city", "")] if x]
@@ -467,6 +576,8 @@ class MainWindow(QMainWindow):
                 target.get("jd_text", ""),
             ]).lower()
             if keyword and keyword not in haystack:
+                continue
+            if not keyword and ("jt", target["id"]) not in selected_keys:
                 continue
             label = f"[意向] {target.get('company_name','')} - {target.get('position_name','')}"
             extras = [x for x in [target.get("status", ""), target.get("city", "")] if x]
@@ -506,6 +617,7 @@ class MainWindow(QMainWindow):
             self.ai_context_list.clearSelection()
         self._selected_ai_app_ids.clear()
         self._selected_ai_jt_ids.clear()
+        self._refresh_ai_context_picker()
         self._update_ai_context_label()
 
     def _get_manual_ai_context_entries(self):
@@ -547,6 +659,16 @@ class MainWindow(QMainWindow):
         else:
             self.ai_ctx.setText("📌 未选中卡片（可自由提问）")
 
+    # ── 行动清单页 ──
+
+    def _init_tasks_page(self):
+        self.page_tasks = QWidget()
+        layout = QVBoxLayout(self.page_tasks)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.tasks_widget = TasksWidget()
+        self.tasks_widget.data_changed.connect(self._on_safe_refresh)
+        layout.addWidget(self.tasks_widget)
+
     def _init_materials_page(self):
         self.page_materials = QWidget()
         self.tabs.addTab(self.page_materials, "资料库")
@@ -574,18 +696,33 @@ class MainWindow(QMainWindow):
 
         self.ai_chat = QTextEdit()
         self.ai_chat.setReadOnly(True)
+        self.ai_chat.setFont(QFont("Microsoft YaHei UI", 11))
         self.ai_chat.setPlaceholderText("AI 回复将显示在这里...")
         self.ai_chat.setMinimumHeight(200)
-        self.ai_chat.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.ai_chat.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.ai_chat.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.ai_chat.setStyleSheet("font-size:14px;line-height:1.8;padding:10px;background:#fcfcfd;border:1px solid #d8d8de;border-radius:18px;")
-        lv.addWidget(self.ai_chat, stretch=1)
+        self.ai_chat.setStyleSheet("font-size:14px;padding:10px;background:#f7f8fa;border:1px solid #d8d8de;border-radius:18px;")
+        chat_row = QHBoxLayout()
+        chat_row.setSpacing(6)
+        chat_row.addWidget(self.ai_chat, stretch=1)
+        self.ai_scroll_slider = QScrollBar(Qt.Orientation.Vertical)
+        self.ai_scroll_slider.setObjectName("chatScrollBar")
+        self.ai_scroll_slider.setFixedWidth(18)
+        self.ai_scroll_slider.setToolTip("拖动滑块阅读长回复")
+        self.ai_scroll_slider.setEnabled(False)
+        chat_bar = self.ai_chat.verticalScrollBar()
+        chat_bar.rangeChanged.connect(self._sync_ai_scroll_slider_range)
+        chat_bar.valueChanged.connect(self.ai_scroll_slider.setValue)
+        self.ai_scroll_slider.valueChanged.connect(chat_bar.setValue)
+        chat_row.addWidget(self.ai_scroll_slider)
+        lv.addLayout(chat_row, stretch=1)
 
         self.ai_input = QTextEdit()
+        self.ai_input.setFont(QFont("Microsoft YaHei UI", 11))
         self.ai_input.setPlaceholderText("输入问题...（Ctrl+Enter 发送）")
         self.ai_input.setMaximumHeight(120)
         self.ai_input.setMinimumHeight(50)
-        self.ai_input.setStyleSheet("font-size:13px;background:#ffffff;border:1px solid #d8d8de;border-radius:16px;")
+        self.ai_input.setStyleSheet("font-size:13px;padding:8px;background:#ffffff;border:1px solid #cfd5df;border-radius:14px;")
         self.ai_input.installEventFilter(self)
         self.ai_chat.verticalScrollBar().valueChanged.connect(self._on_chat_scroll)
         lv.addWidget(self.ai_input)
@@ -619,6 +756,20 @@ class MainWindow(QMainWindow):
         biz_row.addStretch()
         lv.addLayout(biz_row)
 
+        biz_row2 = QHBoxLayout()
+        self.btn_interview = QPushButton("面试训练")
+        self.btn_interview.setFixedHeight(32)
+        self.btn_interview.setToolTip("基于当前 JD 和个人经历生成结构化面试题")
+        self.btn_interview.clicked.connect(lambda: self._on_ai_biz("interview_training"))
+        biz_row2.addWidget(self.btn_interview)
+        self.btn_compare = QPushButton("岗位对比")
+        self.btn_compare.setFixedHeight(32)
+        self.btn_compare.setToolTip("比较多个已选岗位的匹配度、风险和准备成本")
+        self.btn_compare.clicked.connect(lambda: self._on_ai_biz("job_compare"))
+        biz_row2.addWidget(self.btn_compare)
+        biz_row2.addStretch()
+        lv.addLayout(biz_row2)
+
         inp_btn = QHBoxLayout()
         self.btn_ai_send = QPushButton("📤 发送")
         self.btn_ai_send.setFixedHeight(34)
@@ -629,8 +780,8 @@ class MainWindow(QMainWindow):
         lv.addLayout(inp_btn)
         splitter.addWidget(left)
 
-        right = QWidget()
-        rv = QVBoxLayout(right)
+        right_content = QWidget()
+        rv = QVBoxLayout(right_content)
         rv.setContentsMargins(4, 0, 0, 0)
         rv.setSpacing(6)
 
@@ -646,7 +797,8 @@ class MainWindow(QMainWindow):
         gcv.addWidget(self.ai_context_filter)
         self.ai_context_list = QListWidget()
         self.ai_context_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.ai_context_list.setMinimumHeight(170)
+        self.ai_context_list.setMinimumHeight(0)
+        self.ai_context_list.setMaximumHeight(132)
         self.ai_context_list.itemSelectionChanged.connect(self._on_ai_context_selection_changed)
         gcv.addWidget(self.ai_context_list)
         ctx_btns = QHBoxLayout()
@@ -745,7 +897,12 @@ class MainWindow(QMainWindow):
         rv.addWidget(grp_api)
 
         rv.addStretch()
-        splitter.addWidget(right)
+        right_scroll = QScrollArea()
+        right_scroll.setWidgetResizable(True)
+        right_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        right_scroll.setWidget(right_content)
+        splitter.addWidget(right_scroll)
         splitter.setSizes([760, 340])
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 1)
@@ -1113,6 +1270,16 @@ class MainWindow(QMainWindow):
             _, prompt = ai_service.build_project_rewrite_prompt(selected, jd_text)
         elif action == "self_intro":
             _, prompt = ai_service.build_self_intro_prompt(profile, materials, jd_text)
+        elif action == "interview_training":
+            if not jd_text:
+                QMessageBox.information(self, "缺少 JD", "请先在上下文搜索框中选择至少一个带 JD 的岗位。")
+                return
+            _, prompt = ai_service.build_interview_training_prompt(jd_text, profile, materials)
+        elif action == "job_compare":
+            if len(entries) < 2:
+                QMessageBox.information(self, "需要多个岗位", "请在上下文搜索框中至少选择两个投递或意向岗位。")
+                return
+            _, prompt = ai_service.build_job_compare_prompt(entries, profile)
         else:
             return
 
@@ -1144,12 +1311,21 @@ class MainWindow(QMainWindow):
         at_bottom = (sb.maximum() - value) < 20
         self._auto_scroll = at_bottom
 
+    def _sync_ai_scroll_slider_range(self, minimum, maximum):
+        """Keep the visible drag slider in lockstep with the hidden QTextEdit scrollbar."""
+        self.ai_scroll_slider.blockSignals(True)
+        self.ai_scroll_slider.setRange(minimum, maximum)
+        self.ai_scroll_slider.setPageStep(self.ai_chat.verticalScrollBar().pageStep())
+        self.ai_scroll_slider.setValue(self.ai_chat.verticalScrollBar().value())
+        self.ai_scroll_slider.setEnabled(maximum > minimum)
+        self.ai_scroll_slider.blockSignals(False)
+
 
     def _render_chat_messages(self):
         old_scroll = self.ai_chat.verticalScrollBar().value()
         old_max = max(self.ai_chat.verticalScrollBar().maximum(), 1)
         blocks = [self._message_to_html(msg) for msg in self._chat_messages]
-        self.ai_chat.setHtml("<div style='font-family:SF Pro Display,Microsoft YaHei,Segoe UI,sans-serif;padding:6px 4px;'>" + "".join(blocks) + "</div>")
+        self.ai_chat.setHtml("<div style='font-family:Microsoft YaHei UI,Microsoft YaHei,Segoe UI,sans-serif;font-size:14px;padding:6px 4px;color:#1f2937;'>" + "".join(blocks) + "</div>")
         sb = self.ai_chat.verticalScrollBar()
         if self._auto_scroll:
             sb.setValue(sb.maximum())
@@ -1188,7 +1364,7 @@ class MainWindow(QMainWindow):
         return (
             f"<div style='margin:10px 0;padding:14px 16px;border-radius:18px;background:{bg};border:1px solid {border};'>"
             f"<div style='margin:0 0 8px 0;color:{badge};font-size:12px;font-weight:700;'>{title}{ts}{tail}</div>"
-            f"<div style='white-space:pre-wrap;line-height:1.9;color:#1f2937;font-size:14px;'>{body}</div></div>"
+            f"<div style='white-space:pre-wrap;line-height:1.65;color:#263238;font-size:14px;font-family:Microsoft YaHei UI,Microsoft YaHei,Segoe UI,sans-serif;'>{body}</div></div>"
         )
 
     def _append_chat_message(self, role, content, timestamp="", header="", streaming=False):
@@ -1355,14 +1531,23 @@ class MainWindow(QMainWindow):
     def _init_tools_page(self):
         self.page_tools = QWidget()
         self.tabs.addTab(self.page_tools, "工具")
-        layout = QVBoxLayout(self.page_tools)
-        layout.setSpacing(12)
+        layout = QGridLayout(self.page_tools)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setHorizontalSpacing(12)
+        layout.setVerticalSpacing(12)
 
         # 全局加大字号
         btn_font = QFont("Microsoft YaHei", 11)
+        card_style = (
+            "QGroupBox { margin-top: 18px; padding: 14px 10px 10px 10px; "
+            "border: 1px solid #d9dee8; border-radius: 14px; background: #ffffff; }"
+            "QGroupBox::title { subcontrol-origin: margin; left: 12px; "
+            "padding: 0 6px; color: #253047; font-weight: 700; background: #f5f5f7; }"
+        )
 
         # 文件管理
         grp1 = QGroupBox("📂 文件管理")
+        grp1.setStyleSheet(card_style)
         g1 = QVBoxLayout(grp1)
         g1.addWidget(QLabel("管理简历/数据文件夹"))
         btn1 = QPushButton("📁 打开 data 文件夹")
@@ -1370,10 +1555,12 @@ class MainWindow(QMainWindow):
         btn1.setFixedHeight(40)
         btn1.clicked.connect(lambda: os.startfile(str(paths.DATA_DIR)))
         g1.addWidget(btn1)
-        layout.addWidget(grp1)
+        grp1.setMinimumHeight(118)
+        layout.addWidget(grp1, 0, 0)
 
         # PDF → 图片
         grp2 = QGroupBox("📷 PDF → 图片")
+        grp2.setStyleSheet(card_style)
         g2 = QVBoxLayout(grp2)
         g2.addWidget(QLabel("将 PDF 每页导出为 PNG/JPEG/TIFF 图片（支持 DPI 设置）"))
         self.btn_pdf2img = QPushButton("📷 PDF → 图片")
@@ -1381,10 +1568,12 @@ class MainWindow(QMainWindow):
         self.btn_pdf2img.setFixedHeight(40)
         self.btn_pdf2img.clicked.connect(self._run_pdf2img)
         g2.addWidget(self.btn_pdf2img)
-        layout.addWidget(grp2)
+        grp2.setMinimumHeight(118)
+        layout.addWidget(grp2, 0, 1)
 
         # 文档 → 图片版 PDF
         grp3 = QGroupBox("📄 文档 → 图片版 PDF")
+        grp3.setStyleSheet(card_style)
         g3 = QVBoxLayout(grp3)
         g3.addWidget(QLabel("将 Word/图片/PDF 转为图片版 PDF（适合提交/归档）"))
         btn_imgpdf = QPushButton("📄 文档 → 图片版 PDF")
@@ -1392,9 +1581,48 @@ class MainWindow(QMainWindow):
         btn_imgpdf.setFixedHeight(40)
         btn_imgpdf.clicked.connect(self._run_imgpdf)
         g3.addWidget(btn_imgpdf)
-        layout.addWidget(grp3)
+        grp3.setMinimumHeight(118)
+        layout.addWidget(grp3, 1, 0)
 
-        layout.addStretch()
+        # 本地网页看板设置
+        grp4 = QGroupBox("🌐 网页看板设置")
+        grp4.setStyleSheet(card_style)
+        g4 = QVBoxLayout(grp4)
+        g4.addWidget(QLabel("仅限本机访问（127.0.0.1）。可修改端口，保存后立即重启网页网关。"))
+        port_row = QHBoxLayout()
+        port_row.addWidget(QLabel("端口："))
+        self.gateway_port = QSpinBox()
+        self.gateway_port.setRange(1024, 65535)
+        self.gateway_port.setValue(config_manager.get_gateway_port())
+        self.gateway_port.setFixedWidth(120)
+        port_row.addWidget(self.gateway_port)
+        btn_gateway_save = QPushButton("保存并重启网关")
+        btn_gateway_save.setFixedHeight(34)
+        btn_gateway_save.clicked.connect(self._save_gateway_port)
+        port_row.addWidget(btn_gateway_save)
+        port_row.addStretch()
+        g4.addLayout(port_row)
+        self.gateway_url_label = QLabel(f"当前地址：{local_gateway.get_url()}")
+        self.gateway_url_label.setStyleSheet("color:#52657d;")
+        g4.addWidget(self.gateway_url_label)
+        grp4.setMinimumHeight(132)
+        layout.addWidget(grp4, 1, 1)
+
+        layout.setColumnStretch(0, 1)
+        layout.setColumnStretch(1, 1)
+        layout.setRowStretch(2, 1)
+
+    def _save_gateway_port(self):
+        """保存端口并平滑切换正在运行的本机网关。"""
+        port = self.gateway_port.value()
+        try:
+            url = local_gateway.restart_gateway(port)
+            config_manager.set_gateway_port(port)
+        except OSError as exc:
+            QMessageBox.warning(self, "端口不可用", f"端口 {port} 已被其他程序占用，已保留原网页网关。\n\n{exc}")
+            return
+        self.gateway_url_label.setText(f"当前地址：{url}")
+        self.statusBar().showMessage(f"网页网关已切换到 {url}", 6000)
 
     # ── PDF → 图片（子线程）──
 

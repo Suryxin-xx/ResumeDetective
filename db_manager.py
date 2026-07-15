@@ -9,6 +9,8 @@ from pathlib import Path
 import file_ops
 from paths import DB_FILE, DATA_DIR
 
+APPLICATION_STATUSES = ["已投递", "简历初筛", "笔试/无笔试", "业务面试", "HR面", "Offer", "终止"]
+
 # DDL 建表语句
 DDL_STATEMENTS = """
 PRAGMA foreign_keys = ON;
@@ -19,6 +21,8 @@ CREATE TABLE IF NOT EXISTS resumes (
     position_name TEXT NOT NULL,
     file_path TEXT NOT NULL,
     city TEXT DEFAULT '',
+    application_source TEXT DEFAULT '',
+    job_link TEXT DEFAULT '',
     jd_text TEXT,
     upload_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     version_note TEXT
@@ -95,7 +99,42 @@ CREATE TABLE IF NOT EXISTS application_attachments (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS job_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    due_date TEXT DEFAULT '',
+    priority INTEGER DEFAULT 0,
+    state TEXT NOT NULL DEFAULT 'open'
+        CHECK (state IN ('open', 'done')),
+    scope_type TEXT DEFAULT '',
+    scope_id INTEGER,
+    notes TEXT DEFAULT '',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS interviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    application_id INTEGER NOT NULL,
+    round TEXT NOT NULL DEFAULT '一面',
+    interview_time TEXT DEFAULT '',
+    summary TEXT DEFAULT '',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE
+);
 """
+
+
+def _sync_excel_mirror():
+    """同步失败不能影响主业务，例如用户正用 Excel 打开镜像文件。"""
+    try:
+        from excel_sync import sync_application_workbook
+        sync_application_workbook()
+    except OSError as exc:
+        print(f"[Excel 镜像] 文件正被占用，本次稍后重试：{exc}")
+    except Exception as exc:
+        print(f"[Excel 镜像] 同步失败：{exc}")
 
 
 def get_connection() -> sqlite3.Connection:
@@ -163,6 +202,8 @@ def init_db():
         # 迁移 v3: resumes.city + job_targets priority/sort_order
         for tbl, col in [
             ("resumes", "city TEXT DEFAULT ''"),
+            ("resumes", "application_source TEXT DEFAULT ''"),
+            ("resumes", "job_link TEXT DEFAULT ''"),
             ("job_targets", "priority INTEGER DEFAULT 0"),
             ("job_targets", "sort_order INTEGER DEFAULT 0"),
         ]:
@@ -177,14 +218,15 @@ def init_db():
 
 # ─── Resume CRUD ───────────────────────────────────────────
 
-def add_resume(company_name, position_name, file_path, jd_text="", version_note=""):
+def add_resume(company_name, position_name, file_path, jd_text="", version_note="",
+               application_source="", job_link=""):
     """新增简历，返回新纪录的 id"""
     conn = get_connection()
     try:
         cur = conn.execute(
-            "INSERT INTO resumes (company_name, position_name, file_path, jd_text, version_note) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (company_name, position_name, file_path, jd_text, version_note),
+            "INSERT INTO resumes (company_name, position_name, file_path, jd_text, version_note, application_source, job_link) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (company_name, position_name, file_path, jd_text, version_note, application_source, job_link),
         )
         conn.commit()
         return cur.lastrowid
@@ -223,6 +265,7 @@ def delete_resume(resume_id):
         ok, msg = file_ops.recycle_path(fp)
         if not ok:
             print(f"[文件] {msg}: {fp}")
+    _sync_excel_mirror()
 
 
 # ─── Application CRUD ──────────────────────────────────────
@@ -237,9 +280,11 @@ def add_application(resume_id, status="已投递", priority=0):
             (resume_id, status, priority, max_sort + 1),
         )
         conn.commit()
-        return cur.lastrowid
+        app_id = cur.lastrowid
     finally:
         conn.close()
+    _sync_excel_mirror()
+    return app_id
 
 
 def update_application_status(app_id, new_status):
@@ -272,6 +317,7 @@ def update_application_status(app_id, new_status):
         conn.commit()
     finally:
         conn.close()
+    _sync_excel_mirror()
 
 
 def update_priority(app_id, priority):
@@ -282,6 +328,7 @@ def update_priority(app_id, priority):
         conn.commit()
     finally:
         conn.close()
+    _sync_excel_mirror()
 
 
 def update_sort_order(app_id, sort_order):
@@ -292,6 +339,49 @@ def update_sort_order(app_id, sort_order):
         conn.commit()
     finally:
         conn.close()
+    _sync_excel_mirror()
+
+
+def update_application_details(app_id, *, status=None, next_action=None, interview_feedback=None, priority=None):
+    """集中更新投递详情，同时触发 Excel 镜像同步。"""
+    updates, params = [], []
+    if status is not None and status in APPLICATION_STATUSES:
+        updates.append("current_status=?"); params.append(status)
+    if next_action is not None:
+        updates.append("next_action=?"); params.append(next_action)
+    if interview_feedback is not None:
+        updates.append("interview_feedback=?"); params.append(interview_feedback)
+    if priority is not None:
+        updates.append("priority=?"); params.append(priority)
+    if not updates:
+        return
+    conn = get_connection()
+    try:
+        conn.execute(f"UPDATE applications SET {', '.join(updates)} WHERE id=?", [*params, app_id])
+        conn.commit()
+    finally:
+        conn.close()
+    _sync_excel_mirror()
+
+
+def update_resume_details(resume_id, *, company_name=None, position_name=None, city=None,
+                          file_path=None, application_source=None, job_link=None, jd_text=None):
+    """更新与投递展示有关的简历字段并同步镜像。"""
+    values = {
+        "company_name": company_name, "position_name": position_name, "city": city,
+        "file_path": file_path, "application_source": application_source,
+        "job_link": job_link, "jd_text": jd_text,
+    }
+    updates = [(key, value) for key, value in values.items() if value is not None]
+    if not updates:
+        return
+    conn = get_connection()
+    try:
+        conn.execute("UPDATE resumes SET " + ", ".join(f"{key}=?" for key, _ in updates) + " WHERE id=?", [value for _, value in updates] + [resume_id])
+        conn.commit()
+    finally:
+        conn.close()
+    _sync_excel_mirror()
 
 
 def get_applications_with_resume():
@@ -302,7 +392,8 @@ def get_applications_with_resume():
             "SELECT a.id, a.resume_id, a.current_status, a.status_update_time, "
             "       a.interview_feedback, a.next_action, a.status_history, "
             "       a.priority, a.sort_order, "
-            "       r.company_name, r.position_name, r.file_path, r.city, r.jd_text, r.upload_time "
+            "       r.company_name, r.position_name, r.file_path, r.city, "
+            "       r.application_source, r.job_link, r.jd_text, r.upload_time "
             "FROM applications a "
             "JOIN resumes r ON a.resume_id = r.id "
             "ORDER BY a.sort_order ASC, a.status_update_time DESC"
@@ -583,6 +674,7 @@ def convert_job_target_to_application(jt_id):
             (jt_id,),
         )
         conn.commit()
+        _sync_excel_mirror()
         return True, app_id
     except Exception as e:
         import traceback
@@ -675,5 +767,127 @@ def delete_attachments_by_application(application_id):
         conn.execute("DELETE FROM application_attachments WHERE application_id = ?", (application_id,))
         conn.commit()
         return paths
+    finally:
+        conn.close()
+
+
+# ─── Job task CRUD ──────────────────────────────────────────────────────────
+
+def add_job_task(title, due_date="", priority=0, scope_type="", scope_id=None, notes=""):
+    """Create a local action item linked to an application or job target."""
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO job_tasks (title, due_date, priority, scope_type, scope_id, notes) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (title, due_date, priority, scope_type, scope_id, notes),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_job_tasks(state="open"):
+    """Return task items, with overdue items first and the newest items as a stable tie-breaker."""
+    conn = get_connection()
+    try:
+        sql = "SELECT * FROM job_tasks"
+        params = []
+        if state in ("open", "done"):
+            sql += " WHERE state = ?"
+            params.append(state)
+        sql += (
+            " ORDER BY CASE WHEN state='open' AND due_date<>'' THEN due_date ELSE '9999-12-31' END ASC, "
+            "priority DESC, created_at DESC"
+        )
+        return [dict(row) for row in conn.execute(sql, params).fetchall()]
+    finally:
+        conn.close()
+
+
+def update_job_task(task_id, title, due_date="", priority=0, scope_type="", scope_id=None, notes=""):
+    """Update task content without changing completion state."""
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE job_tasks SET title=?, due_date=?, priority=?, scope_type=?, scope_id=?, notes=? WHERE id=?",
+            (title, due_date, priority, scope_type, scope_id, notes, task_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def set_job_task_state(task_id, state):
+    """Mark a task complete or reopen it."""
+    conn = get_connection()
+    try:
+        completed_at = "CURRENT_TIMESTAMP" if state == "done" else "NULL"
+        conn.execute(
+            f"UPDATE job_tasks SET state=?, completed_at={completed_at} WHERE id=?",
+            (state, task_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_job_task(task_id):
+    """Delete one task after the UI has received explicit user confirmation."""
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM job_tasks WHERE id=?", (task_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_open_task_summary(today):
+    """Return counts needed for the dashboard without exposing task contents."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT "
+            "SUM(CASE WHEN due_date<>'' AND due_date < ? THEN 1 ELSE 0 END) AS overdue, "
+            "SUM(CASE WHEN due_date = ? THEN 1 ELSE 0 END) AS today, "
+            "COUNT(*) AS total "
+            "FROM job_tasks WHERE state='open'",
+            (today, today),
+        ).fetchone()
+        return dict(row) if row else {"overdue": 0, "today": 0, "total": 0}
+    finally:
+        conn.close()
+
+
+# ─── Interview review CRUD ──────────────────────────────────────────────────
+
+def add_interview(application_id, round_name="一面", interview_time="", summary=""):
+    """记录一次面试；一条记录对应一轮面试。"""
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO interviews (application_id, round, interview_time, summary) VALUES (?, ?, ?, ?)",
+            (application_id, round_name, interview_time, summary),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_interviews(application_id=None):
+    """获取面试复盘，默认按时间倒序返回所有岗位。"""
+    conn = get_connection()
+    try:
+        sql = (
+            "SELECT i.*, r.company_name, r.position_name FROM interviews i "
+            "JOIN applications a ON i.application_id=a.id JOIN resumes r ON a.resume_id=r.id"
+        )
+        params = []
+        if application_id is not None:
+            sql += " WHERE i.application_id=?"; params.append(application_id)
+        sql += " ORDER BY CASE WHEN i.interview_time='' THEN 1 ELSE 0 END, i.interview_time DESC, i.created_at DESC"
+        return [dict(row) for row in conn.execute(sql, params).fetchall()]
     finally:
         conn.close()

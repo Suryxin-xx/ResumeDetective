@@ -14,6 +14,8 @@ class Resume:
     position_name: str = ""
     file_path: str = ""
     jd_text: str = ""
+    application_source: str = ""
+    job_link: str = ""
     upload_time: str = ""
     version_note: str = ""
 

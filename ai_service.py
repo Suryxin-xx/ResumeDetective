@@ -193,6 +193,52 @@ def build_self_intro_prompt(profile, materials, jd=""):
     return system, desensitize("\n".join(parts))
 
 
+def build_interview_training_prompt(jd, profile, materials):
+    """Build a practical interview drill prompt from the selected JD and resume data."""
+    parts = [
+        "请基于以下目标岗位和求职者资料，生成一套秋招面试训练题。",
+        "要求：不要编造经历；每道题给出考察点、回答结构和追问方向；按高频程度排序；使用中文 Markdown。",
+        "输出 8 道题，包含 3 道项目题、2 道技术题、2 道行为题和 1 道反问 HR 的问题。",
+    ]
+    if jd:
+        parts.append("## 目标 JD\n" + jd)
+    if profile:
+        parts.append("## 个人信息\n" + _profile_text(profile))
+    if materials:
+        parts.append("## 相关经历\n" + _materials_text(materials[:10]))
+    return "你是资深互联网面试官，请严格依据资料设计训练题。", desensitize("\n\n".join(parts))
+
+
+def build_job_compare_prompt(entries, profile=None):
+    """Build a side-by-side comparison prompt for selected applications or target JDs."""
+    parts = [
+        "请比较以下求职岗位，帮助我做秋招投递决策。",
+        "请用 Markdown 表格输出：岗位匹配度、技术栈匹配、城市与稳定性、成长性、风险、准备成本、建议优先级。",
+        "结论必须区分事实和推测；资料没有提供的内容写‘未知’，不要自行编造。",
+    ]
+    for index, entry in enumerate(entries or [], start=1):
+        parts.append(
+            f"## 岗位 {index}\n公司：{entry.get('company_name', '')}\n"
+            f"岗位：{entry.get('position_name', '')}\n城市：{entry.get('city', '')}\n"
+            f"状态：{entry.get('status', '')}\nJD：\n{entry.get('jd_text', '')}"
+        )
+    if profile:
+        parts.append("## 我的背景\n" + _profile_text(profile))
+    return "你是求职策略顾问，请基于给定岗位和个人资料做客观比较。", desensitize("\n\n".join(parts))
+
+
+def _profile_text(profile):
+    fields = ("full_name", "school", "major", "education", "city", "target_role", "summary")
+    return "\n".join(f"- {field}: {profile.get(field, '')}" for field in fields if profile.get(field, ""))
+
+
+def _materials_text(materials):
+    return "\n".join(
+        f"- [{item.get('material_type', '经历')}] {item.get('title', '')}: {item.get('content', '')}"
+        for item in materials
+    )
+
+
 def call_deepseek(api_key, messages, model=None):
     """调用 DeepSeek API（流式），返回生成器逐 token yield"""
     if not model:

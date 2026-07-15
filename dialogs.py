@@ -67,6 +67,14 @@ class AddResumeDialog(QDialog):
         self.edit_version.setPlaceholderText("如：v2.0-技术岗专用")
         form.addRow("版本备注：", self.edit_version)
 
+        self.edit_source = QLineEdit()
+        self.edit_source.setPlaceholderText("如：官网、内推、牛客、招聘群")
+        form.addRow("投递来源：", self.edit_source)
+
+        self.edit_job_link = QLineEdit()
+        self.edit_job_link.setPlaceholderText("岗位官网链接（建议与 JD 快照一起保存）")
+        form.addRow("岗位链接：", self.edit_job_link)
+
         # JD 原文
         self.edit_jd = QTextEdit()
         self.edit_jd.setPlaceholderText("粘贴岗位描述（JD）原文...")
@@ -109,6 +117,8 @@ class AddResumeDialog(QDialog):
             "position_name": position,
             "source_file": self._selected_file,
             "jd_text": self.edit_jd.toPlainText().strip(),
+            "application_source": self.edit_source.text().strip(),
+            "job_link": self.edit_job_link.text().strip(),
             "version_note": self.edit_version.text().strip(),
         }
         self.accept()

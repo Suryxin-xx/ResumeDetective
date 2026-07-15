@@ -1,5 +1,3 @@
-{
-  "model_provider": "DeepSeek",
-  "theme": "light",
-  "cli_path": ""
+﻿{
+  "tab_order": ["board", "tasks", "materials", "ai", "targets", "tools"]
 }

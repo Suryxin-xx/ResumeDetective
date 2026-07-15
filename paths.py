@@ -19,6 +19,9 @@ CONFIG_FILE = DATA_DIR / "config.json"
 # 数据库文件
 DB_FILE = DATA_DIR / "data.db"
 
+# 软件自动维护的 Excel 镜像（软件为唯一写入源）
+APPLICATION_MIRROR_FILE = DATA_DIR / "秋招投递追踪.xlsx"
+
 # 简历文件存储目录
 RESUMES_DIR = DATA_DIR / "Resumes"
 

@@ -12,7 +12,13 @@ data/Resumes/
 data/Attachments/
 data/chat_history/
 data/reasonix/runtime/
+data/reasonix/.env
+data/reasonix/config.toml
+data/reasonix/cache/
+data/reasonix/projects/
 data/*.enc
+data/*.xlsx
+data/*.tmp.xlsx
 
 # Local packaged outputs
 build/
@@ -21,6 +27,10 @@ dist/
 # Optional local CLI binaries
 Reasonix Cli/.reasonix.exe.new
 Reasonix Cli/reasonix.exe.bak
+Reasonix Cli/reasonix.exe
+
+# Local QA screenshots
+screenshots/gateway-*.png
 
 # Virtual environments
 .venv/

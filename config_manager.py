@@ -98,6 +98,38 @@ def set_tab_order(order):
     save_config(cfg)
 
 
+def get_window_geometry():
+    """Return the last normal window geometry, if it is safe to restore."""
+    value = load_config().get("window_geometry", "")
+    return value if isinstance(value, str) else ""
+
+
+def set_window_geometry(value):
+    """Persist only UI geometry; sensitive values remain in secure_store."""
+    cfg = load_config()
+    cfg["window_geometry"] = value
+    save_config(cfg)
+
+
+def get_gateway_port() -> int:
+    """获取本地网页看板端口；非法旧配置安全回退到默认值。"""
+    try:
+        port = int(load_config().get("gateway_port", 8765))
+    except (TypeError, ValueError):
+        return 8765
+    return port if 1024 <= port <= 65535 else 8765
+
+
+def set_gateway_port(port: int):
+    """保存本地网页看板端口（仅端口号，不保存主机地址）。"""
+    port = int(port)
+    if not 1024 <= port <= 65535:
+        raise ValueError("端口必须在 1024 到 65535 之间")
+    cfg = load_config()
+    cfg["gateway_port"] = port
+    save_config(cfg)
+
+
 def ensure_api_key(parent=None):
     """确保 API Key 存在，否则弹窗输入"""
     key = sec.get_api_key()

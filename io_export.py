@@ -23,6 +23,8 @@ EXCEL_HEADERS = [
     ("面试反馈", 40),
     ("下一步计划", 30),
     ("备注", 20),
+    ("投递来源", 18),
+    ("岗位原始链接", 42),
 ]
 
 STATUS_VALUES = ["已投递", "简历初筛", "笔试/无笔试", "业务面试", "HR面", "Offer", "终止"]
@@ -67,6 +69,8 @@ def export_xlsx(output_path):
         ws.cell(row=row_idx, column=6, value=app.get("interview_feedback", ""))
         ws.cell(row=row_idx, column=7, value=app.get("next_action", ""))
         ws.cell(row=row_idx, column=8, value="")
+        ws.cell(row=row_idx, column=9, value=app.get("application_source", ""))
+        ws.cell(row=row_idx, column=10, value=app.get("job_link", ""))
 
     wb.save(output_path)
     return len(apps)
@@ -103,6 +107,8 @@ def import_xlsx(input_path):
         feedback = str(row[5]).strip() if len(row) > 5 and row[5] else ""
         next_action = str(row[6]).strip() if len(row) > 6 and row[6] else ""
         version_note = str(row[7]).strip() if len(row) > 7 and row[7] else ""
+        application_source = str(row[8]).strip() if len(row) > 8 and row[8] else ""
+        job_link = str(row[9]).strip() if len(row) > 9 and row[9] else ""
 
         # 校验状态
         if status not in STATUS_VALUES:
@@ -122,20 +128,16 @@ def import_xlsx(input_path):
             file_path=rel_path,
             jd_text=jd_text,
             version_note=version_note,
+            application_source=application_source,
+            job_link=job_link,
         )
         app_id = db_manager.add_application(rid, status)
 
-        # 写入反馈和下一步
+        # 写入反馈和下一步（同时刷新固定 Excel 镜像）
         if feedback or next_action:
-            conn = db_manager.get_connection()
-            try:
-                conn.execute(
-                    "UPDATE applications SET interview_feedback=?, next_action=? WHERE id=?",
-                    (feedback, next_action, app_id),
-                )
-                conn.commit()
-            finally:
-                conn.close()
+            db_manager.update_application_details(
+                app_id, interview_feedback=feedback, next_action=next_action
+            )
 
         count += 1
 
@@ -153,7 +155,7 @@ def generate_template(output_path):
     header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
     header_desc = [
         "必填", "必填", "可选，本地简历文件路径", "可选",
-        f"可选，默认'已投递'，可选值见「状态说明」sheet", "可选", "可选", "可选",
+        f"可选，默认'已投递'，可选值见「状态说明」sheet", "可选", "可选", "可选", "可选", "可选",
     ]
     for col_idx, ((name, width), desc) in enumerate(zip(EXCEL_HEADERS, header_desc), 1):
         cell = ws.cell(row=1, column=col_idx, value=name)
@@ -163,7 +165,8 @@ def generate_template(output_path):
         ws.cell(row=2, column=col_idx, value=desc).font = Font(color="888888", italic=True, size=9)
 
     example = ["字节跳动", "后端开发", r"C:\Users\xxx\简历.pdf",
-               "负责后端服务开发...", "业务面试", "一面通过", "准备二面", "v2.0"]
+               "负责后端服务开发...", "业务面试", "一面通过", "准备二面", "v2.0",
+               "内推", "https://jobs.example.com/position/123"]
     for col_idx, val in enumerate(example, 1):
         ws.cell(row=3, column=col_idx, value=val)
 
