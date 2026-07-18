@@ -164,7 +164,7 @@ def generate_template(output_path):
         ws.column_dimensions[chr(64 + col_idx)].width = width
         ws.cell(row=2, column=col_idx, value=desc).font = Font(color="888888", italic=True, size=9)
 
-    example = ["字节跳动", "后端开发", r"C:\Users\xxx\简历.pdf",
+    example = ["字节跳动", "后端开发", "<请选择本地简历文件>",
                "负责后端服务开发...", "业务面试", "一面通过", "准备二面", "v2.0",
                "内推", "https://jobs.example.com/position/123"]
     for col_idx, val in enumerate(example, 1):

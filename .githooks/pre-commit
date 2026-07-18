@@ -1,0 +1,2 @@
+#!/bin/sh
+python scripts/check_repository_safety.py --staged

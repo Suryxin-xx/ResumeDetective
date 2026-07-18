@@ -1,47 +1,49 @@
-# Python cache
+# Python cache and virtual environments
 __pycache__/
 *.py[cod]
 *.pyo
 *.egg-info/
 *.egg
-
-# Local user data
-data/config.json
-data/data.db
-data/Resumes/
-data/Attachments/
-data/chat_history/
-data/reasonix/runtime/
-data/reasonix/.env
-data/reasonix/config.toml
-data/reasonix/cache/
-data/reasonix/projects/
-data/*.enc
-data/*.xlsx
-data/*.tmp.xlsx
-
-# Local packaged outputs
-build/
-dist/
-
-# Optional local CLI binaries
-Reasonix Cli/.reasonix.exe.new
-Reasonix Cli/reasonix.exe.bak
-Reasonix Cli/reasonix.exe
-
-# Local QA screenshots
-screenshots/gateway-*.png
-
-# Virtual environments
 .venv/
 env/
 
-# IDE
+# Personal runtime data. Source mode stores it outside the repository, while
+# this rule also protects legacy/local data folders left beside the source.
+data/
+.resumedetective.local.json
+local-artifacts/
+
+# Optional Reasonix CLI is downloaded by each user and never committed.
+Reasonix Cli/
+reasonix.exe
+.reasonix.exe.new
+reasonix.exe.bak
+
+# Defense in depth for sensitive/generated file types.
+*.db
+*.db-shm
+*.db-wal
+*.enc
+*.env
+!.env.example
+*.xlsx
+*.tmp.xlsx
+*.jsonl
+
+# Build and release outputs belong in GitHub Releases, not source control.
+build/
+dist/
+release/
+*.zip
+*.sha256
+
+# Local QA captures
+screenshots/gateway-*.png
+
+# IDE / OS
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# OS
 Thumbs.db
 .DS_Store

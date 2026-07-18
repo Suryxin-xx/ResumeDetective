@@ -149,4 +149,4 @@ class AddResumeDialog(QDialog):
 
         dst = dst_dir / new_name
         shutil.copy2(str(src), str(dst))
-        return f"data/Resumes/{dst.name}"
+        return paths.stored_data_path(dst)

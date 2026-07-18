@@ -1,0 +1,4 @@
+{
+  "tab_order": ["board", "tasks", "materials", "ai", "targets", "tools"],
+  "gateway_port": 8765
+}

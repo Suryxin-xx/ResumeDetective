@@ -13,8 +13,8 @@ from excel_sync import sync_application_workbook
 
 
 def main():
-    paths.DATA_DIR.mkdir(parents=True, exist_ok=True)
-    paths.RESUMES_DIR.mkdir(parents=True, exist_ok=True)
+    paths.migrate_legacy_data_if_needed()
+    paths.ensure_data_directories()
     db_manager.init_db()
     try:
         sync_application_workbook()

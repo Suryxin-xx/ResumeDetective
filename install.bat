@@ -65,12 +65,13 @@ if exist "%CLI_EXE%" (
 )
 echo.
 
-echo [3/3] Preparing local data folders...
-if not exist "%~dp0data" mkdir "%~dp0data"
-if not exist "%~dp0data\Resumes" mkdir "%~dp0data\Resumes"
-if not exist "%~dp0data\chat_history" mkdir "%~dp0data\chat_history"
-if not exist "%~dp0data\reasonix" mkdir "%~dp0data\reasonix"
-echo [OK] Data folders are ready.
+echo [3/3] Preparing private data folders outside the repository...
+python -c "import paths; paths.ensure_data_directories(); print('[OK] Private data:', paths.DATA_DIR)"
+if errorlevel 1 (
+    echo [ERROR] Failed to prepare the private data directory.
+    pause
+    exit /b 1
+)
 echo.
 
 echo ============================================

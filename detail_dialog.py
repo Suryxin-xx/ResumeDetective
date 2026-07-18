@@ -257,7 +257,7 @@ class JobDetailDialog(QDialog):
                 i += 1
         import shutil
         shutil.copy2(str(src), str(dest))
-        return str(dest)
+        return paths.stored_data_path(dest)
 
     def _on_add_attachment(self):
         if self._app_id is None:
@@ -295,9 +295,10 @@ class JobDetailDialog(QDialog):
 
     def _on_open_attachment(self, item):
         fp = item.data(Qt.ItemDataRole.ToolTipRole)
-        if fp and Path(fp).exists():
+        resolved = paths.resolve_data_path(fp) if fp else None
+        if resolved and resolved.exists():
             import os
-            os.startfile(fp)
+            os.startfile(str(resolved))
         else:
             QMessageBox.information(self, "提示", "文件不存在，可能已被移动或删除。")
 
@@ -325,7 +326,7 @@ class JobDetailDialog(QDialog):
             return
         file_path = db_manager.delete_attachment(att_id)
         if file_path:
-            fp = Path(file_path)
+            fp = paths.resolve_data_path(file_path)
             if fp.exists():
                 ok, msg = file_ops.recycle_path(fp)
                 if not ok:
@@ -345,7 +346,7 @@ class JobDetailDialog(QDialog):
         # 先删附件文件
         att_paths = db_manager.delete_attachments_by_application(self._app_id)
         for fp_str in att_paths:
-            fp = Path(fp_str)
+            fp = paths.resolve_data_path(fp_str)
             if fp.exists():
                 ok, msg = file_ops.recycle_path(fp)
                 if not ok:

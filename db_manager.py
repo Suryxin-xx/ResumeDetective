@@ -259,9 +259,8 @@ def delete_resume(resume_id):
 
     # 简历文件移入回收站；失败时保留原文件，避免误删资料
     if file_path:
-        fp = Path(file_path)
-        if not fp.is_absolute():
-            fp = Path(__file__).parent / file_path
+        from paths import resolve_data_path
+        fp = resolve_data_path(file_path)
         ok, msg = file_ops.recycle_path(fp)
         if not ok:
             print(f"[文件] {msg}: {fp}")

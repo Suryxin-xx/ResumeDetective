@@ -23,6 +23,11 @@ if (-not $stageFull.StartsWith($buildFull + '\', [StringComparison]::OrdinalIgno
 
 Write-Host "Preparing clean release workspace..."
 
+& python (Join-Path $PSScriptRoot "check_repository_safety.py")
+if ($LASTEXITCODE -ne 0) {
+    throw "Repository safety check failed. Refusing to build."
+}
+
 if (Test-Path $stageRoot) {
     Remove-Item -LiteralPath $stageRoot -Recurse -Force
 }
@@ -90,13 +95,11 @@ if (Test-Path -LiteralPath $scriptsSrc -PathType Container) {
     Copy-Item -LiteralPath $scriptsSrc -Destination (Join-Path $stageRoot "scripts") -Recurse
 }
 
-$reasonixSrc = Join-Path $projectRoot "Reasonix Cli"
-$reasonixDst = Join-Path $stageRoot "Reasonix Cli"
-if (Test-Path $reasonixSrc) {
-    Copy-Item -LiteralPath $reasonixSrc -Destination $reasonixDst -Recurse
-    $newExe = Join-Path $reasonixDst ".reasonix.exe.new"
-    if (Test-Path $newExe) {
-        Remove-Item -LiteralPath $newExe -Force
+$publicDirectories = @("data.example", ".github", ".githooks")
+foreach ($directory in $publicDirectories) {
+    $sourceDirectory = Join-Path $projectRoot $directory
+    if (Test-Path -LiteralPath $sourceDirectory -PathType Container) {
+        Copy-Item -LiteralPath $sourceDirectory -Destination (Join-Path $stageRoot $directory) -Recurse
     }
 }
 
@@ -132,8 +135,8 @@ New-Item -ItemType Directory -Path $stageBuildRoot -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $stageBuildRoot "ResumeDetective") -Force | Out-Null
 New-Item -ItemType Directory -Path $stageDistRoot -Force | Out-Null
 
-# Ship only a template. The real Reasonix .env is created locally at runtime.
-$envExample = Join-Path $projectRoot "data\reasonix\.env.example"
+# Ship only a template. The real Reasonix .env is created in the user's data directory.
+$envExample = Join-Path $projectRoot "data.example\reasonix\.env.example"
 $envExampleDst = Join-Path $stageRoot "data\reasonix\.env.example"
 if (Test-Path $envExample) {
     Copy-Item -LiteralPath $envExample -Destination $envExampleDst
@@ -155,8 +158,8 @@ if (Test-Path $envExample) {
 Release package notes:
 1. This folder does not include your local API key, chat history, database, or runtime cache.
 2. End users will generate their own data.db and encrypted key store on first launch.
-3. Reasonix remains optional and uses the app-local directory only.
-4. Never rename .env.example to .env before publishing the source tree.
+3. Reasonix CLI is not bundled. Users download it from its upstream project when needed.
+4. Never rename .env.example to .env inside the source tree.
 '@ | Set-Content -Path (Join-Path $stageRoot "data\README.txt") -Encoding UTF8
 
 Assert-NoLocalSecrets $stageRoot
@@ -201,6 +204,17 @@ if ($pyinstaller) {
             Write-Host ""
             Write-Host "Package build completed."
             Write-Host "Output folder: $stageRoot\\dist\\ResumeDetective"
+
+            $version = (Get-Content -LiteralPath (Join-Path $stageRoot "VERSION") -Raw).Trim()
+            $archive = Join-Path $stageDistRoot "ResumeDetective-v$version-windows-x64.zip"
+            if (Test-Path -LiteralPath $archive) {
+                Remove-Item -LiteralPath $archive -Force
+            }
+            Compress-Archive -Path $appDist -DestinationPath $archive -CompressionLevel Optimal
+            $archiveHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+            Set-Content -LiteralPath "$archive.sha256" -Value "$archiveHash  $([IO.Path]::GetFileName($archive))" -Encoding ASCII
+            Write-Host "GitHub Release archive: $archive"
+            Write-Host "SHA256 file: $archive.sha256"
         } else {
             Write-Host ""
             Write-Host "PyInstaller finished with a non-zero exit code."

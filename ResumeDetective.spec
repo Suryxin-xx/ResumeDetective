@@ -4,28 +4,13 @@ PyInstaller 打包配置
 打包命令：pyinstaller ResumeDetective.spec
 """
 
-import os
-import sys
-from pathlib import Path
-
 block_cipher = None
-
-reasonix_dir = Path('Reasonix Cli')
-optional_binaries = []
-optional_datas = []
-reasonix_exe = reasonix_dir / 'reasonix.exe'
-if reasonix_exe.exists():
-    optional_binaries.append((str(reasonix_exe), 'Reasonix Cli'))
-for name in ('README.md', 'README.zh-CN.md', 'LICENSE', 'CHANGELOG.md'):
-    candidate = reasonix_dir / name
-    if candidate.exists():
-        optional_datas.append((str(candidate), 'Reasonix Cli'))
 
 a = Analysis(
     ['main.py'],
     pathex=['.'],
-    binaries=optional_binaries,
-    datas=optional_datas,
+    binaries=[],
+    datas=[],
     hiddenimports=[
         'PyQt6',
         'PyQt6.QtCore',

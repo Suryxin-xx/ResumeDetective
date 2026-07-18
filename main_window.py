@@ -1073,11 +1073,11 @@ class MainWindow(QMainWindow):
         return f"AI ({html.escape(model_id)} / API)"
 
     def _resolve_reasonix_executable(self):
-        """只使用应用内 Reasonix CLI。"""
+        """使用用户自行安装并明确配置的 Reasonix CLI。"""
         return cli_ai.find_reasonix()
 
     def _on_init_reasonix(self):
-        """初始化应用内 Reasonix 配置和本地 .env。"""
+        """在外置个人数据目录初始化 Reasonix 配置和 .env。"""
         api_key = config_manager.get_api_key()
         ok = cli_ai.ensure_local_reasonix_config(api_key=api_key or None)
         if ok:
@@ -1085,7 +1085,7 @@ class MainWindow(QMainWindow):
             self._populate_models(show_message=True, fetch_remote=False)
             self.statusBar().showMessage("✅ 已初始化 Reasonix 本地配置", 4000)
         else:
-            QMessageBox.warning(self, "初始化失败", "未能生成 Reasonix 本地配置，请检查 data/reasonix 目录权限。")
+            QMessageBox.warning(self, "初始化失败", "未能生成 Reasonix 配置，请检查个人数据目录的写入权限。")
 
 
     def _on_upgrade_reasonix(self):
@@ -1162,7 +1162,7 @@ class MainWindow(QMainWindow):
             if chn == "reasonix":
                 cli_exe = self._resolve_reasonix_executable()
                 if not cli_exe:
-                    self._ai_chunk_signal.emit("未找到应用内 Reasonix CLI。请将 reasonix.exe 放入 Reasonix Cli/ 目录。", True)
+                    self._ai_chunk_signal.emit("未找到 Reasonix CLI。请从上游项目自行下载，并放入 Reasonix Cli/ 目录。", True)
                     return
                 cli_ai.sync_local_reasonix_env(api_key or None)
                 merged_prompt = f"{sp}\n\n{p}" if sp else p

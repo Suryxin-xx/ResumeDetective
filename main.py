@@ -1,6 +1,6 @@
 """
 简历侦探（Resume Detective）—— 程序入口
-首次运行自动创建 data/ 数据目录
+源码模式将个人数据保存在仓库外；便携版保存在 EXE 旁的 data/。
 """
 
 import sys
@@ -14,9 +14,10 @@ from excel_sync import sync_application_workbook
 
 
 def main():
-    # 创建数据目录（data/ data/Resumes/）
-    paths.DATA_DIR.mkdir(parents=True, exist_ok=True)
-    paths.RESUMES_DIR.mkdir(parents=True, exist_ok=True)
+    migrated, migration_message = paths.migrate_legacy_data_if_needed()
+    if migrated:
+        print(f"[数据迁移] {migration_message}")
+    paths.ensure_data_directories()
     print(f"[配置] 数据目录: {paths.DATA_DIR}")
 
     # 初始化数据库

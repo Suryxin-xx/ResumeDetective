@@ -1,7 +1,7 @@
 """
-cli_ai.py — Reasonix CLI 适配层（本地封装模式）
-仅从应用目录内查找和运行 reasonix.exe，不扫描任何系统外部路径。
-Reasonix 配置和密钥均落在 data/reasonix/，并通过 REASONIX_HOME 指向该目录。
+cli_ai.py — Reasonix CLI 适配层（用户自行安装的可选组件）
+不会把 reasonix.exe 打进源码仓库或公开发布包。配置和密钥均落在外置个人
+数据目录的 reasonix/，并通过 REASONIX_HOME 指向该目录。
 """
 
 import json
@@ -39,11 +39,22 @@ def sanitize_reasonix_output(text: str) -> str:
 
 
 def _search_reasonix() -> Path | None:
-    """在应用自有目录查找 reasonix.exe，返回 Path 或 None。"""
-    candidates = [
+    """查找用户明确配置或放在应用目录中的 reasonix.exe。"""
+    candidates = []
+    explicit = os.environ.get("REASONIX_CLI_PATH", "").strip()
+    if explicit:
+        candidates.append(Path(explicit).expanduser())
+    try:
+        import config_manager
+        configured = config_manager.get_cli_path().strip()
+        if configured:
+            candidates.append(Path(configured).expanduser())
+    except Exception:
+        pass
+    candidates.extend([
         REASONIX_CLI_EXE,                          # 项目/Reasonix Cli/reasonix.exe
         ROOT_DIR / "reasonix.exe",                 # 项目/reasonix.exe
-    ]
+    ])
     # PyInstaller 打包环境
     if hasattr(sys, "_MEIPASS"):
         mei = Path(sys._MEIPASS)
@@ -57,7 +68,7 @@ def _search_reasonix() -> Path | None:
 
 
 def find_reasonix() -> Path | None:
-    """返回应用内 reasonix.exe 路径，None 表示未找到。
+    """返回用户自行安装的 reasonix.exe 路径，None 表示未找到。
     结果会缓存以避免重复搜索。"""
     global _REASONIX_CACHE
     if _REASONIX_CACHE is None:
@@ -67,7 +78,7 @@ def find_reasonix() -> Path | None:
 
 def get_reasonix_status() -> dict:
     """
-    返回应用内 Reasonix CLI 的详细状态。
+    返回可选 Reasonix CLI 的详细状态。
     {
         "found": bool,
         "path": str or None,
@@ -167,7 +178,7 @@ def _cleanup_runtime_home(runtime_home: Path | None):
 def _reasonix_subprocess_env(api_key: str | None = None, runtime_home: Path | None = None) -> dict:
     """
     构造 Reasonix 子进程环境。
-    - 强制使用应用内 REASONIX_HOME
+    - 强制使用外置个人数据目录中的 REASONIX_HOME
     - 若本地 .env 不存在且传入了 api_key，则自动写入
     """
     if api_key is not None:
@@ -221,7 +232,7 @@ def get_local_provider_choices() -> dict:
 
 def sync_local_reasonix_env(api_key: str | None = None) -> bool:
     """
-    同步应用内 Reasonix .env。
+    同步外置个人数据目录中的 Reasonix .env。
     若传入 api_key，则写入/覆盖 DEEPSEEK_API_KEY。
     """
     env_path = _get_local_env_path()
@@ -260,7 +271,7 @@ def ensure_local_reasonix_config(api_key: str | None = None) -> bool:
     cfg_path = _get_local_config_path()
     REASONIX_DATA_DIR.mkdir(parents=True, exist_ok=True)
     template = """# Reasonix 本地配置（自动生成）
-# 官方建议的自包含目录：通过 REASONIX_HOME 指向当前 data/reasonix
+# 自包含目录：通过 REASONIX_HOME 指向外置个人数据目录的 reasonix/
 
 default_model = "deepseek-flash"
 
@@ -363,7 +374,7 @@ def call_reasonix_blocking(prompt: str, model: str = None, cli_path: str = None)
     else:
         exe = find_reasonix()
     if not exe:
-        return False, "未找到应用内 reasonix.exe。请确认 Reasonix Cli/ 目录下存在 reasonix.exe。"
+        return False, "未找到 Reasonix CLI。请从上游项目自行下载，并放入 Reasonix Cli/ 目录或配置 REASONIX_CLI_PATH。"
     runtime_home = _create_runtime_home()
     cmd = [str(exe), "run"]
     if model:
@@ -395,12 +406,12 @@ def call_reasonix_blocking(prompt: str, model: str = None, cli_path: str = None)
 
 def upgrade_reasonix() -> tuple:
     """
-    调用应用内 reasonix upgrade。
+    调用用户自行安装的 reasonix upgrade。
     返回 (成功?, 输出文本)
     """
     exe = find_reasonix()
     if not exe:
-        return False, "未找到应用内 reasonix.exe"
+        return False, "未找到 Reasonix CLI"
     REASONIX_DATA_DIR.mkdir(parents=True, exist_ok=True)
     runtime_home = _create_runtime_home()
     new_exe = exe.parent / ".reasonix.exe.new"
@@ -452,7 +463,7 @@ def call_reasonix(prompt: str, model: str = None,
     exe = find_reasonix()
     if not exe:
         if on_error:
-            on_error("未找到应用内 reasonix.exe。请确认 Reasonix Cli/ 目录下存在 reasonix.exe。")
+            on_error("未找到 Reasonix CLI。请从上游项目自行下载，并放入 Reasonix Cli/ 目录或配置 REASONIX_CLI_PATH。")
         return None
 
     cmd = [str(exe), "run"]
@@ -488,7 +499,7 @@ def call_reasonix(prompt: str, model: str = None,
                     on_error(f"退出码 {proc.returncode}: {err[:200]}")
         except FileNotFoundError:
             if on_error:
-                on_error("找不到应用内 reasonix.exe")
+                on_error("找不到 Reasonix CLI")
         except Exception as e:
             if on_error:
                 on_error(str(e))

@@ -1,6 +1,6 @@
 """
 配置管理模块
-读取/写入 data/config.json（普通配置，不含敏感信息）
+读取/写入个人数据目录中的 config.json（普通配置，不含敏感信息）
 敏感信息（API Key 等）委托给 secure_store 模块处理
 """
 
@@ -21,7 +21,7 @@ def load_config():
 
 
 def save_config(config: dict):
-    """保存配置到 data/config.json"""
+    """保存普通配置到外置个人数据目录。"""
     # 确保敏感字段不会意外写回明文 config.json
     safe = {k: v for k, v in config.items() if k != "api_key"}
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
