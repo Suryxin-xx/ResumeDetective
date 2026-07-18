@@ -4,12 +4,27 @@
 """
 
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 import file_ops
 from paths import DB_FILE, DATA_DIR
 
 APPLICATION_STATUSES = ["已投递", "简历初筛", "笔试/无笔试", "业务面试", "HR面", "Offer", "终止"]
+
+
+def utc_timestamp_to_local(value) -> str:
+    """把 SQLite CURRENT_TIMESTAMP 生成的 UTC 时间转换为电脑本地时间。"""
+    if value in (None, ""):
+        return ""
+    text = str(value).strip()
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError):
+        return text
 
 # DDL 建表语句
 DDL_STATEMENTS = """
@@ -384,7 +399,7 @@ def update_resume_details(resume_id, *, company_name=None, position_name=None, c
 
 
 def get_applications_with_resume():
-    """联表查询所有投递记录（含简历信息和状态历史）"""
+    """联表查询所有投递记录，并将数据库 UTC 时间转换为电脑本地时间。"""
     conn = get_connection()
     try:
         rows = conn.execute(
@@ -397,7 +412,15 @@ def get_applications_with_resume():
             "JOIN resumes r ON a.resume_id = r.id "
             "ORDER BY a.sort_order ASC, a.status_update_time DESC"
         ).fetchall()
-        return [dict(r) for r in rows]
+        applications = [dict(r) for r in rows]
+        for application in applications:
+            application["status_update_time"] = utc_timestamp_to_local(
+                application.get("status_update_time")
+            )
+            application["upload_time"] = utc_timestamp_to_local(
+                application.get("upload_time")
+            )
+        return applications
     finally:
         conn.close()
 
