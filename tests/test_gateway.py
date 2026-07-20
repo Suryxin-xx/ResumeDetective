@@ -166,8 +166,8 @@ class GatewayHttpTests(unittest.TestCase):
 class GatewayPageTests(unittest.TestCase):
     def setUp(self):
         self.apps = [
-            {"id": 1, "resume_id": 11, "company_name": "进行中公司", "position_name": "后端工程师", "current_status": "业务面试", "city": "上海", "application_source": "官网", "next_action": "准备二面", "status_update_time": "2026-07-18 09:30:00", "file_path": "", "priority": 2, "job_link": "", "jd_text": "Python", "upload_time": "2026-07-10"},
-            {"id": 2, "resume_id": 12, "company_name": "归档公司", "position_name": "算法工程师", "current_status": "终止", "city": "北京", "application_source": "内推", "next_action": "", "status_update_time": "2026-07-17 18:20:00", "file_path": "", "priority": 0, "job_link": "", "jd_text": "", "upload_time": "2026-07-11"},
+            {"id": 1, "resume_id": 11, "company_name": "进行中公司", "position_name": "后端工程师", "current_status": "业务面试", "city": "上海", "application_source": "官网", "next_action": "准备二面", "status_update_time": "2026-07-18 09:30:00", "status_history": "2026-07-17 09:30: 已投递 → 业务面试", "file_path": "", "priority": 2, "job_link": "", "jd_text": "Python", "upload_time": "2026-07-10"},
+            {"id": 2, "resume_id": 12, "company_name": "归档公司", "position_name": "算法工程师", "current_status": "终止", "city": "北京", "application_source": "内推", "next_action": "", "status_update_time": "2026-07-17 18:20:00", "status_history": "2026-07-15 10:00: 已投递 → 业务面试\n2026-07-17 18:20: 业务面试 → 终止", "file_path": "", "priority": 0, "job_link": "", "jd_text": "", "upload_time": "2026-07-11"},
         ]
 
     def test_overview_focuses_on_actions_not_interview_form(self):
@@ -188,6 +188,8 @@ class GatewayPageTests(unittest.TestCase):
         self.assertIn("已终止岗位 · 1", page)
         self.assertIn("状态更新时间", page)
         self.assertIn("2026-07-18 09:30", page)
+        self.assertIn("已投递 → 业务面试 → 终止", page)
+        self.assertIn("终止前：业务面试", page)
 
     def test_application_management_is_compact_and_archives_terminated_jobs(self):
         with patch.object(local_gateway.db_manager, "get_applications_with_resume", return_value=self.apps), \
@@ -198,6 +200,12 @@ class GatewayPageTests(unittest.TestCase):
         self.assertIn("已终止岗位 · 1", page)
         self.assertIn('/application/2/reopen', page)
         self.assertIn("状态更新时间", page)
+        self.assertIn("流转详情", page)
+
+    def test_status_flow_keeps_the_previous_stage_before_termination(self):
+        app = self.apps[1]
+        self.assertEqual(local_gateway._status_flow(app), ["已投递", "业务面试", "终止"])
+        self.assertEqual(local_gateway._termination_hint(app), "终止前：业务面试")
 
     def test_resume_workspace_reports_missing_bindings(self):
         with patch.object(local_gateway.db_manager, "get_applications_with_resume", return_value=self.apps), \
