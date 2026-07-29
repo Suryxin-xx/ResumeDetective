@@ -37,6 +37,8 @@ a = Analysis(
         'interviews_widget',
         'data_safety',
         'local_gateway',
+        'gateway_main',
+        'gateway_instance',
         'excel_sync',
         'secure_store',
         'file_ops',
@@ -50,7 +52,18 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    # 当前功能不使用这些可选模块。显式排除可避免全局构建环境把它们
+    # 连同大体积二进制依赖一起收集；对应PDF/Excel功能由自动化测试覆盖。
+    excludes=[
+        'numpy',
+        'numpy.core',
+        'numpy._core',
+        'docx',
+        'lxml',
+        'PyQt6.QtPdf',
+        'PyQt6.QtPdfWidgets',
+        'PIL.AvifImagePlugin',
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -76,6 +89,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    version='file_version_info.txt',
     icon=None,
 )
 

@@ -4,10 +4,12 @@ from datetime import date, timedelta
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from threading import Thread
+from threading import Thread, Timer
 from urllib.parse import parse_qs, quote, urlparse
+import hmac
 import mimetypes
 import re
+import secrets
 import uuid
 
 import config_manager
@@ -21,6 +23,10 @@ MAX_UPLOAD_BYTES = 12 * 1024 * 1024
 ALLOWED_RESUME_SUFFIXES = {".pdf", ".doc", ".docx"}
 _server = None
 _server_port = None
+_control_handler = None
+_address_handler = None
+_control_token = None
+_CONTROL_DELAY_SECONDS = 0.35
 
 
 def get_port() -> int:
@@ -29,6 +35,41 @@ def get_port() -> int:
 
 def get_url(port=None) -> str:
     return f"http://{HOST}:{port or get_port()}"
+
+
+def get_running_port() -> int | None:
+    return _server_port
+
+
+def set_control_handler(handler) -> None:
+    """Register a callback for the web restart/shutdown controls."""
+    global _control_handler
+    _control_handler = handler
+
+
+def set_address_handler(handler) -> None:
+    """Register a callback that publishes each successfully bound URL."""
+    global _address_handler
+    _address_handler = handler
+
+
+def _schedule_gateway_control(action: str) -> None:
+    handler = _control_handler
+    if handler is None:
+        return
+    timer = Timer(_CONTROL_DELAY_SECONDS, handler, args=(action,))
+    timer.daemon = True
+    timer.start()
+
+
+def _gateway_controls() -> str:
+    if _control_handler is None or not _control_token:
+        return ""
+    token = escape(_control_token)
+    return f'''<div class="gateway-controls">
+    <form method="post" action="/gateway/restart"><input type="hidden" name="control_token" value="{token}"><button class="ghost compact-control" onclick="return confirm('确认重启本地网页网关吗？页面会短暂断开。')">重启网关</button></form>
+    <form method="post" action="/gateway/shutdown"><input type="hidden" name="control_token" value="{token}"><button class="danger compact-control" onclick="return confirm('确认关闭本地网页网关吗？关闭后需要重新启动才能访问。')">关闭网关</button></form>
+    </div>'''
 
 
 def _status_class(status: str) -> str:
@@ -226,8 +267,9 @@ FLOW_STYLES = '''<style>
 def _layout(title: str, current: str, body: str, port: int) -> str:
     nav = f'''<nav><a class="{"active" if current == "overview" else ""}" href="/">总览</a><a class="{"active" if current == "board" else ""}" href="/board">状态看板</a><a class="{"active" if current == "applications" else ""}" href="/applications">投递管理</a><a class="{"active" if current == "tasks" else ""}" href="/tasks">行动清单</a><a class="{"active" if current == "interviews" else ""}" href="/interviews">面试复盘</a><a class="{"active" if current == "resumes" else ""}" href="/resumes">简历汇总</a></nav>'''
     body = UI_ENHANCEMENTS + ARCHIVE_STYLES + FLOW_STYLES + body
+    controls = _gateway_controls()
     return f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{escape(title)} · Resume Detective</title><style>
-    :root{{--bg:#f5f7fb;--paper:#fff;--ink:#182235;--muted:#64748a;--line:#e1e7f0;--brand:#2d68df;--danger:#cb3a46;--shadow:0 8px 26px rgba(25,37,62,.07)}}*{{box-sizing:border-box}}html,body{{max-width:100%;overflow-x:hidden}}body{{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 "Segoe UI","Microsoft YaHei UI","Microsoft YaHei","PingFang SC",sans-serif}}.shell{{width:100%;max-width:1280px;margin:auto;padding:0 20px 50px}}header{{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:24px 0 17px;border-bottom:1px solid var(--line)}}h1{{margin:0;font-size:23px;letter-spacing:-.01em}}.local{{font-size:12px;font-weight:700;color:#187546;background:#e7f8ee;padding:7px 10px;border-radius:99px;white-space:nowrap}}nav{{display:flex;flex-wrap:wrap;gap:6px;padding:15px 0}}nav a{{text-decoration:none;color:#4f6078;padding:8px 12px;border-radius:8px;font-weight:700}}nav a:hover{{background:#eaf0ff;color:#235bcd}}nav a.active{{background:#2d68df;color:#fff}}.stats{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:2px 0 16px}}.stat,.panel{{min-width:0;background:var(--paper);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}}.stat{{padding:15px 17px}}.stat span,.hint{{color:var(--muted);font-size:12px}}.stat b{{display:block;font-size:25px;margin-top:5px}}.stat.primary{{background:linear-gradient(130deg,#2b66dd,#6793ec);border:0;color:#fff}}.stat.primary span{{color:#dfeaff}}.panel{{padding:20px;margin-bottom:16px}}.panel-head{{display:flex;justify-content:space-between;gap:15px;align-items:start;margin-bottom:16px}}h2{{margin:0 0 5px;font-size:18px}}h3{{margin:0;font-size:16px}}.grid-two{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}}form{{margin:0}}label{{display:grid;gap:7px;color:#43536b;font-size:13px;font-weight:750}}input,select,textarea,button{{font-family:inherit;border-radius:8px;padding:9px 10px}}input,select,textarea{{border:1px solid #ccd6e4;background:#fff;color:#1c2a40;min-width:0}}textarea{{min-height:96px;resize:vertical;line-height:1.55}}button{{border:0;background:var(--brand);color:#fff;font-weight:700;cursor:pointer}}button:hover{{background:#1e57ca}}button.danger{{background:#fff0f1;color:var(--danger)}}button.danger:hover{{background:#ffe3e5}}.add-form{{display:grid;grid-template-columns:1fr 1.15fr .75fr .8fr .55fr;gap:12px;align-items:end}}.add-form .wide{{grid-column:span 2}}.add-form .file{{grid-column:span 2}}.add-form button{{height:42px}}.toolbar{{display:flex;gap:8px;align-items:center}}.toolbar input{{width:280px}}.ghost{{background:#edf2fe;color:#275fce}}.badge{{padding:5px 8px;border-radius:7px;font-size:12px;font-weight:700;white-space:nowrap}}.blue{{background:#e9f1ff;color:#245fd4}}.amber{{background:#fff1dc;color:#a85b08}}.purple{{background:#f1eaff;color:#7441b5}}.green{{background:#e3f7ec;color:#197c4b}}.cyan{{background:#dff5f8;color:#176b7b}}.rose{{background:#ffe7ee;color:#a62f54}}.gray{{background:#eef1f5;color:#5f6d80}}.manage-form{{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end}}.manage-form .wide{{grid-column:1/-1}}.resume-row{{display:flex;gap:10px;align-items:center;padding:11px;border:1px dashed #bdcbe0;border-radius:9px;grid-column:1/-1}}.resume-row input{{padding:0;border:0;flex:1;max-width:100%}}.resume-row a{{font-size:12px;color:#2460d0;white-space:nowrap}}.actions{{display:flex;gap:8px;grid-column:1/-1}}.actions button{{flex:1}}.todo,.reviews{{list-style:none;padding:0;margin:0}}.todo li,.review{{padding:11px 0;border-top:1px solid var(--line);line-height:1.5}}.todo li:first-child,.review:first-child{{border-top:0;padding-top:0}}time{{font-size:12px;color:#52647c;display:inline-block;min-width:90px}}time.overdue{{color:#be3740}}.next-list{{display:grid;gap:10px}}.next-item{{border:1px solid var(--line);border-radius:10px;padding:12px}}.next-item b{{display:block}}.next-item p{{margin:5px 0 0;color:#48566c}}.empty{{margin:0;color:var(--muted);line-height:1.6}}.hidden{{display:none!important}}@media(max-width:850px){{.add-form{{grid-template-columns:1fr 1fr}}.add-form .wide,.add-form .file{{grid-column:auto}}.add-form button{{grid-column:1/-1}}.grid-two{{grid-template-columns:1fr}}}}@media(max-width:580px){{.shell{{padding:0 13px 36px}}header{{align-items:flex-start;flex-direction:column}}.stats{{grid-template-columns:repeat(2,minmax(0,1fr))}}.panel{{padding:16px}}.panel-head{{flex-direction:column}}.toolbar{{width:100%;flex-direction:column;align-items:stretch}}.toolbar input{{width:100%}}.add-form,.manage-form{{grid-template-columns:1fr}}.add-form .wide,.add-form .file,.manage-form .wide{{grid-column:auto}}.resume-row{{grid-column:auto;align-items:start;flex-direction:column}}.actions{{grid-column:auto;flex-direction:column}}}}</style></head><body><main class="shell"><header><h1>秋招工作台</h1><div class="local">仅本机访问 · 127.0.0.1:{port}</div></header>{nav}{body}</main></body></html>'''
+    :root{{--bg:#f5f7fb;--paper:#fff;--ink:#182235;--muted:#64748a;--line:#e1e7f0;--brand:#2d68df;--danger:#cb3a46;--shadow:0 8px 26px rgba(25,37,62,.07)}}*{{box-sizing:border-box}}html,body{{max-width:100%;overflow-x:hidden}}body{{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 "Segoe UI","Microsoft YaHei UI","Microsoft YaHei","PingFang SC",sans-serif}}.shell{{width:100%;max-width:1280px;margin:auto;padding:0 20px 50px}}header{{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:24px 0 17px;border-bottom:1px solid var(--line)}}h1{{margin:0;font-size:23px;letter-spacing:-.01em}}.header-actions{{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}}.local{{font-size:12px;font-weight:700;color:#187546;background:#e7f8ee;padding:7px 10px;border-radius:99px;white-space:nowrap}}.gateway-controls{{display:flex;gap:7px;align-items:center}}.compact-control{{min-height:34px;padding:6px 10px;font-size:12px}}nav{{display:flex;flex-wrap:wrap;gap:6px;padding:15px 0}}nav a{{text-decoration:none;color:#4f6078;padding:8px 12px;border-radius:8px;font-weight:700}}nav a:hover{{background:#eaf0ff;color:#235bcd}}nav a.active{{background:#2d68df;color:#fff}}.stats{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:2px 0 16px}}.stat,.panel{{min-width:0;background:var(--paper);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}}.stat{{padding:15px 17px}}.stat span,.hint{{color:var(--muted);font-size:12px}}.stat b{{display:block;font-size:25px;margin-top:5px}}.stat.primary{{background:linear-gradient(130deg,#2b66dd,#6793ec);border:0;color:#fff}}.stat.primary span{{color:#dfeaff}}.panel{{padding:20px;margin-bottom:16px}}.panel-head{{display:flex;justify-content:space-between;gap:15px;align-items:start;margin-bottom:16px}}h2{{margin:0 0 5px;font-size:18px}}h3{{margin:0;font-size:16px}}.grid-two{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}}form{{margin:0}}label{{display:grid;gap:7px;color:#43536b;font-size:13px;font-weight:750}}input,select,textarea,button{{font-family:inherit;border-radius:8px;padding:9px 10px}}input,select,textarea{{border:1px solid #ccd6e4;background:#fff;color:#1c2a40;min-width:0}}textarea{{min-height:96px;resize:vertical;line-height:1.55}}button{{border:0;background:var(--brand);color:#fff;font-weight:700;cursor:pointer}}button:hover{{background:#1e57ca}}button.danger{{background:#fff0f1;color:var(--danger)}}button.danger:hover{{background:#ffe3e5}}.add-form{{display:grid;grid-template-columns:1fr 1.15fr .75fr .8fr .55fr;gap:12px;align-items:end}}.add-form .wide{{grid-column:span 2}}.add-form .file{{grid-column:span 2}}.add-form button{{height:42px}}.toolbar{{display:flex;gap:8px;align-items:center}}.toolbar input{{width:280px}}.ghost{{background:#edf2fe;color:#275fce}}.badge{{padding:5px 8px;border-radius:7px;font-size:12px;font-weight:700;white-space:nowrap}}.blue{{background:#e9f1ff;color:#245fd4}}.amber{{background:#fff1dc;color:#a85b08}}.purple{{background:#f1eaff;color:#7441b5}}.green{{background:#e3f7ec;color:#197c4b}}.cyan{{background:#dff5f8;color:#176b7b}}.rose{{background:#ffe7ee;color:#a62f54}}.gray{{background:#eef1f5;color:#5f6d80}}.manage-form{{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end}}.manage-form .wide{{grid-column:1/-1}}.resume-row{{display:flex;gap:10px;align-items:center;padding:11px;border:1px dashed #bdcbe0;border-radius:9px;grid-column:1/-1}}.resume-row input{{padding:0;border:0;flex:1;max-width:100%}}.resume-row a{{font-size:12px;color:#2460d0;white-space:nowrap}}.actions{{display:flex;gap:8px;grid-column:1/-1}}.actions button{{flex:1}}.todo,.reviews{{list-style:none;padding:0;margin:0}}.todo li,.review{{padding:11px 0;border-top:1px solid var(--line);line-height:1.5}}.todo li:first-child,.review:first-child{{border-top:0;padding-top:0}}time{{font-size:12px;color:#52647c;display:inline-block;min-width:90px}}time.overdue{{color:#be3740}}.next-list{{display:grid;gap:10px}}.next-item{{border:1px solid var(--line);border-radius:10px;padding:12px}}.next-item b{{display:block}}.next-item p{{margin:5px 0 0;color:#48566c}}.empty{{margin:0;color:var(--muted);line-height:1.6}}.hidden{{display:none!important}}@media(max-width:850px){{.add-form{{grid-template-columns:1fr 1fr}}.add-form .wide,.add-form .file{{grid-column:auto}}.add-form button{{grid-column:1/-1}}.grid-two{{grid-template-columns:1fr}}}}@media(max-width:580px){{.shell{{padding:0 13px 36px}}header{{align-items:flex-start;flex-direction:column}}.header-actions{{justify-content:flex-start}}.stats{{grid-template-columns:repeat(2,minmax(0,1fr))}}.panel{{padding:16px}}.panel-head{{flex-direction:column}}.toolbar{{width:100%;flex-direction:column;align-items:stretch}}.toolbar input{{width:100%}}.add-form,.manage-form{{grid-template-columns:1fr}}.add-form .wide,.add-form .file,.manage-form .wide{{grid-column:auto}}.resume-row{{grid-column:auto;align-items:start;flex-direction:column}}.actions{{grid-column:auto;flex-direction:column}}}}</style></head><body><main class="shell"><header><h1>秋招工作台</h1><div class="header-actions"><div class="local">仅本机访问 · 127.0.0.1:{port}</div>{controls}</div></header>{nav}{body}</main></body></html>'''
 
 
 def _overview_page(port: int) -> str:
@@ -437,19 +479,41 @@ def _resume_response(handler: BaseHTTPRequestHandler, app_id: int, *, send_body=
 class _Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
+    def _send_html(self, status: int, body: str):
+        encoded = body.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(encoded)
+
     def _send_problem(self, status: int, message: str):
         """发送 UTF-8 错误页，避免中文进入只支持 Latin-1 的 HTTP 状态行。"""
         body = (f'<!doctype html><meta charset="utf-8"><title>请求失败</title>'
                 f'<body style="font-family:Microsoft YaHei,sans-serif;padding:32px">'
                 f'<h2>请求失败（{status}）</h2><p>{escape(message)}</p>'
-                f'<p><a href="/">返回总览</a></p></body>').encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        if self.command != "HEAD":
-            self.wfile.write(body)
+                f'<p><a href="/">返回总览</a></p></body>')
+        self._send_html(status, body)
+
+    def _send_control_result(self, action: str):
+        if action == "restart":
+            body = '''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+            <title>正在重启 · Resume Detective</title>
+            <body style="font-family:Segoe UI,Microsoft YaHei,sans-serif;background:#f5f7fb;color:#182235;padding:40px">
+            <main style="max-width:560px;margin:auto;background:#fff;border:1px solid #e1e7f0;border-radius:14px;padding:28px">
+            <h2>网页网关正在重启</h2><p>连接会短暂断开，恢复后将自动返回总览。</p><p id="state" style="color:#64748a">正在等待网关恢复……</p></main>
+            <script>setTimeout(function wait(){fetch('/health',{cache:'no-store'}).then(function(r){if(r.ok){location.replace('/');return}throw 0}).catch(function(){document.querySelector('#state').textContent='仍在重启，请稍候……';setTimeout(wait,700)})},800)</script>
+            </body></html>'''
+        else:
+            body = '''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+            <title>网关已关闭 · Resume Detective</title>
+            <body style="font-family:Segoe UI,Microsoft YaHei,sans-serif;background:#f5f7fb;color:#182235;padding:40px">
+            <main style="max-width:560px;margin:auto;background:#fff;border:1px solid #e1e7f0;border-radius:14px;padding:28px">
+            <h2>网页网关正在关闭</h2><p>现在可以安全关闭这个页面。需要再次使用时，请重新运行“启动网页看板”。</p></main>
+            </body></html>'''
+        self._send_html(200, body)
 
     def _is_safe_local_request(self) -> bool:
         """拒绝 DNS rebinding Host，并限制浏览器跨源 POST。"""
@@ -505,6 +569,19 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             data, files = _parse_post(self)
             path = urlparse(self.path).path
+            if path in {"/gateway/restart", "/gateway/shutdown"}:
+                supplied = str(data.get("control_token") or "")
+                if (
+                    _control_handler is None
+                    or not _control_token
+                    or not hmac.compare_digest(supplied, _control_token)
+                ):
+                    self._send_problem(403, "网关控制请求已失效，请刷新页面后重试")
+                    return
+                action = "restart" if path.endswith("/restart") else "shutdown"
+                self._send_control_result(action)
+                _schedule_gateway_control(action)
+                return
             if path == "/application":
                 company, position = data.get("company_name", "").strip(), data.get("position_name", "").strip()
                 if not company or not position: raise ValueError("公司名称和岗位名称不能为空")
@@ -611,26 +688,34 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 def start_gateway(port=None) -> str:
-    global _server, _server_port
+    global _server, _server_port, _control_token
     if _server is None:
         _server_port = int(get_port() if port is None else port)
         _server = ThreadingHTTPServer((HOST, _server_port), _Handler)
         _server_port = int(_server.server_port)
+        _control_token = secrets.token_urlsafe(24)
         Thread(target=_server.serve_forever, name="ResumeDetectiveGateway", daemon=True).start()
+        if _address_handler is not None:
+            _address_handler(get_url(_server_port))
     return get_url(_server_port)
 
 
-def restart_gateway(port: int) -> str:
+def restart_gateway(port: int | None = None, *, force: bool = False) -> str:
+    port = int(get_port() if port is None else port)
     old_port = _server_port
-    if old_port == port: return get_url(port)
+    if old_port == port and not force:
+        return get_url(port)
     stop_gateway()
-    try: return start_gateway(port)
+    try:
+        return start_gateway(port)
     except OSError:
-        if old_port is not None: start_gateway(old_port)
+        if old_port is not None:
+            start_gateway(old_port)
         raise
 
 
 def stop_gateway():
-    global _server, _server_port
+    global _server, _server_port, _control_token
     if _server is not None:
         _server.shutdown(); _server.server_close(); _server = None; _server_port = None
+    _control_token = None

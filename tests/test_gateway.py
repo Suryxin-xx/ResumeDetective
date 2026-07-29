@@ -11,6 +11,9 @@ import local_gateway
 class GatewayHttpTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
+        local_gateway.set_control_handler(None)
+        local_gateway.set_address_handler(None)
+        local_gateway._control_token = None
         resume_dir = Path(self.temp_dir.name) / "data" / "Resumes"
         resume_dir.mkdir(parents=True)
         self.resume_file = resume_dir / "拼多多_产品管培生_中文简历.pdf"
@@ -40,6 +43,9 @@ class GatewayHttpTests(unittest.TestCase):
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(timeout=2)
+        local_gateway.set_control_handler(None)
+        local_gateway.set_address_handler(None)
+        local_gateway._control_token = None
         for item in reversed(self.patches):
             item.stop()
         self.temp_dir.cleanup()
@@ -163,6 +169,39 @@ class GatewayHttpTests(unittest.TestCase):
         self.assertEqual(dict(headers)["Location"], "/applications")
         update_status.assert_called_once_with(12, "已投递")
 
+    def test_gateway_controls_require_token_and_dispatch_after_response(self):
+        actions = []
+        dispatched = threading.Event()
+
+        def control(action):
+            actions.append(action)
+            dispatched.set()
+
+        local_gateway.set_control_handler(control)
+        local_gateway._control_token = "test-control-token"
+
+        status, _, _ = self.request(
+            "POST",
+            "/gateway/shutdown",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            body=b"",
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(actions, [])
+
+        with patch.object(local_gateway, "_CONTROL_DELAY_SECONDS", 0.01):
+            status, headers, payload = self.request(
+                "POST",
+                "/gateway/restart",
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                body=b"control_token=test-control-token",
+            )
+        self.assertEqual(status, 200)
+        self.assertEqual(len(payload), int(dict(headers)["Content-Length"]))
+        self.assertIn("正在重启", payload.decode("utf-8"))
+        self.assertTrue(dispatched.wait(1))
+        self.assertEqual(actions, ["restart"])
+
 
 class GatewayPageTests(unittest.TestCase):
     def setUp(self):
@@ -177,6 +216,22 @@ class GatewayPageTests(unittest.TestCase):
             page = local_gateway._overview_page(8765)
         self.assertIn("快速进入工作区", page)
         self.assertNotIn("新增面试复盘", page)
+
+    def test_layout_shows_restart_and_shutdown_only_when_controlled(self):
+        local_gateway.set_control_handler(None)
+        local_gateway._control_token = None
+        self.assertNotIn("/gateway/restart", local_gateway._layout("测试", "", "", 8765))
+
+        local_gateway.set_control_handler(lambda _action: None)
+        local_gateway._control_token = "layout-token"
+        try:
+            page = local_gateway._layout("测试", "", "", 8765)
+        finally:
+            local_gateway.set_control_handler(None)
+            local_gateway._control_token = None
+        self.assertIn("/gateway/restart", page)
+        self.assertIn("/gateway/shutdown", page)
+        self.assertIn("layout-token", page)
 
     def test_board_has_bounded_lanes_table_and_status_time(self):
         with patch.object(local_gateway.db_manager, "get_applications_with_resume", return_value=self.apps):
@@ -233,6 +288,21 @@ class GatewayPageTests(unittest.TestCase):
         self.assertIn("进行中公司 · 后端工程师", page)
         self.assertIn("归档公司 · 算法工程师", page)
         self.assertIn("2 轮", page)
+
+
+class GatewayLifecycleTests(unittest.TestCase):
+    def test_each_successful_bind_publishes_the_current_address(self):
+        addresses = []
+        local_gateway.set_address_handler(addresses.append)
+        try:
+            first = local_gateway.start_gateway(0)
+            second = local_gateway.restart_gateway(0, force=True)
+        finally:
+            local_gateway.stop_gateway()
+            local_gateway.set_address_handler(None)
+        self.assertEqual(addresses, [first, second])
+        self.assertNotEqual(first, "http://127.0.0.1:0")
+        self.assertNotEqual(second, "http://127.0.0.1:0")
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QApplication, QMenu, QMessageBox, QStyle, QSystemTrayIcon
 
 import db_manager
+from gateway_instance import GatewayControlBridge, GatewayInstance
 import local_gateway
 import paths
 from excel_sync import sync_application_workbook
@@ -46,10 +47,33 @@ def main():
     app.setApplicationName("Resume Detective Gateway")
     app.setQuitOnLastWindowClosed(False)
 
+    paths.ensure_data_directories()
+    instance = GatewayInstance()
+    if not instance.try_acquire():
+        url = instance.existing_url(local_gateway.get_url(args.port))
+        if os.environ.get("RESUME_DETECTIVE_NO_BROWSER") != "1":
+            _open_browser(url)
+        return 0
+
+    def control_gateway(action: str):
+        if action == "shutdown":
+            app.quit()
+            return
+        port = local_gateway.get_running_port()
+        if port is not None:
+            local_gateway.restart_gateway(port, force=True)
+
+    control_bridge = GatewayControlBridge(control_gateway, app)
+    local_gateway.set_control_handler(control_bridge.submit)
+    local_gateway.set_address_handler(instance.publish)
     try:
         _prepare_data()
         url = local_gateway.start_gateway(args.port)
     except Exception as exc:
+        local_gateway.stop_gateway()
+        local_gateway.set_control_handler(None)
+        local_gateway.set_address_handler(None)
+        instance.release()
         QMessageBox.critical(
             None,
             "网页工作台启动失败",
@@ -64,6 +88,9 @@ def main():
             f"网页工作台已启动：{url}\n\n当前系统无法显示托盘图标，关闭此提示后程序将退出。",
         )
         local_gateway.stop_gateway()
+        local_gateway.set_control_handler(None)
+        local_gateway.set_address_handler(None)
+        instance.release()
         return 1
 
     icon = app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
@@ -98,7 +125,13 @@ def main():
         3500,
     )
 
-    app.aboutToQuit.connect(local_gateway.stop_gateway)
+    def cleanup():
+        local_gateway.stop_gateway()
+        local_gateway.set_control_handler(None)
+        local_gateway.set_address_handler(None)
+        instance.release()
+
+    app.aboutToQuit.connect(cleanup)
     signal.signal(signal.SIGINT, lambda *_: app.quit())
     timer = QTimer()
     timer.timeout.connect(lambda: None)

@@ -1,0 +1,9 @@
+# Reproducible Windows release environment.
+# Bump RUNTIME_VERSION whenever these runtime dependencies change.
+PyInstaller==6.21.0
+PyQt6==6.11.0
+requests==2.34.2
+openpyxl==3.1.5
+PyMuPDF==1.28.0
+Pillow==12.3.0
+comtypes==1.4.16

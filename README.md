@@ -82,7 +82,14 @@ http://127.0.0.1:8765
 
 网页上传的 PDF、DOC、DOCX 简历会复制到个人数据目录的 `Resumes`；删除投递时，关联简历与附件会移入系统回收站。端口可在「🔧 工具 → 🌐 网页看板设置」中修改，保存后立即生效。
 
-也可以直接双击 `启动网页看板.bat`：它会静默启动独立 Gateway，不打开桌面窗口，也不会保留黑色命令窗口。右下角系统托盘图标可用于打开网页或退出 Gateway；直接双击 `ResumeDetectiveGateway.exe` 则会自动打开浏览器。
+也可以直接双击 `启动网页看板.bat`：它会通过同一个
+`ResumeDetective.exe --gateway --silent` 静默启动网页工作台，不打开桌面窗口，
+也不会保留黑色命令窗口。右下角系统托盘图标可用于打开网页或退出 Gateway。
+桌面端与网页端共享同一套运行依赖，不会重复占用安装包体积。
+
+同一份个人数据只允许一个网页网关实例运行。重复双击启动脚本时，新进程会立即
+退出并复用现有实例，不会继续堆积后台进程或托盘图标。网页右上角提供
+「重启网关」和「关闭网关」；控制请求只接受当前本机页面生成的临时令牌。
 
 ## 🖥️ 界面截图
 
@@ -113,18 +120,19 @@ http://127.0.0.1:8765
 
 | 文件 | 说明 |
 |------|------|
-| `ResumeDetective-v3.2.0-windows-x64.zip` | 桌面端 + 系统托盘独立网页网关完整包，解压即用（推荐） |
+| `ResumeDetective-vX.Y.Z-windows-x64-full.zip` | 首次安装或运行时升级使用，包含完整共享依赖 |
+| `ResumeDetective-vX.Y.Z-windows-x64-update.zip` | 已安装用户的小更新包，仅在 `RUNTIME_VERSION` 一致时覆盖使用 |
 
 **系统要求：** Windows 10/11，64 位
 
-> ⚠️ 不要只拿走 `ResumeDetective.exe`，请将整个文件夹解压后再运行。
+> ⚠️ 首次安装不要只拿走 `ResumeDetective.exe`，请下载 full 包并完整解压。
 > 首次使用需自行输入 API Key，程序会在本机加密保存。
 
 ## 🚀 快速开始
 
 ### 普通用户
 
-1. 从 [Releases](https://github.com/Suryxin-xx/ResumeDetective/releases) 下载最新版 zip
+1. 首次使用从 [Releases](https://github.com/Suryxin-xx/ResumeDetective/releases) 下载最新版 full 包
 2. 解压到任意文件夹
 3. 桌面模式：双击运行 `ResumeDetective.exe`
 4. 纯网页模式：双击 `启动网页看板.bat`，再从系统托盘打开固定的 localhost 地址
@@ -242,25 +250,34 @@ Reasonix EXE、ZIP 和超大文件；GitHub Actions 会再执行同样的检查�
 ## 🔨 自行打包
 
 ```powershell
-# 1. 安装依赖
-pip install -r requirements.txt
-pip install pyinstaller
-
-# 2. 一键生成桌面版 + 独立网关版
+# 一键生成共享运行时完整包 + 增量更新包
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_exe.ps1
 ```
 
-最终需要管理的发布目录位于项目同级的 `ResumeDetective-Releases/`，其中只保存：
+构建脚本根据 `requirements-build.txt` 创建并复用隔离的本地构建环境，避免全局
+Python 中的可选包被误收集。最终需要管理的发布目录位于项目同级的
+`ResumeDetective-Releases/`，每个版本生成：
 
-- `ResumeDetective-vX.Y.Z-windows-x64.zip`
-- `ResumeDetective-vX.Y.Z-windows-x64.zip.sha256`
+- `ResumeDetective-vX.Y.Z-windows-x64-full.zip`
+- `ResumeDetective-vX.Y.Z-windows-x64-full.zip.sha256`
+- `ResumeDetective-vX.Y.Z-windows-x64-update.zip`
+- `ResumeDetective-vX.Y.Z-windows-x64-update.zip.sha256`
 
-ZIP 内已经包含桌面端、独立 Gateway、一键启动脚本、README 和运行依赖，可以直接
-上传 GitHub Release。构建所需的源码副本、PyInstaller 缓存和未压缩程序会暂存在
+full 包包含桌面端、网页模式、一键启动脚本、README 和运行依赖；update 包只包含
+主程序、启动脚本、版本和运行时兼容清单。只有修改 `requirements-build.txt` 或底层
+Python/PyInstaller 运行时时才需要递增 `RUNTIME_VERSION`，普通业务代码更新不需要。
+
+构建所需的源码副本、PyInstaller 缓存和未压缩程序会暂存在
 `%TEMP%\ResumeDetective-Build`，无论成功或失败都会由公开打包脚本清理，不需要手动管理。
 
 构建脚本会先执行完整自动化测试，再在系统临时目录创建干净源码快照，并自动排除本机数据库、简历、Excel 镜像、
 聊天记录、API 密钥、Reasonix CLI/运行缓存和本地调试截图；任何必需源码缺失或安全扫描失败都会直接终止构建。
+
+Windows 包默认不使用 onefile 和 UPX，以降低启发式杀毒误报。正式公开分发时仍建议
+使用受信任的 Authenticode 证书签名。构建脚本支持证书存储指纹
+`RESUMEDETECTIVE_SIGN_SHA1`，也支持
+`RESUMEDETECTIVE_SIGN_PFX` / `RESUMEDETECTIVE_SIGN_PASSWORD`；未配置证书时会生成
+可运行但未签名的包，并明确输出警告。
 
 ## 🙏 开发协作与致谢
 

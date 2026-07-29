@@ -2,7 +2,7 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-if exist "%~dp0ResumeDetectiveGateway.exe" goto packaged_gateway
+if exist "%~dp0ResumeDetective.exe" goto packaged_gateway
 
 where pythonw.exe >nul 2>nul
 if errorlevel 1 goto python_missing
@@ -12,7 +12,7 @@ if errorlevel 1 goto launch_failed
 exit /b 0
 
 :packaged_gateway
-start "" "%~dp0ResumeDetectiveGateway.exe" --silent
+start "" "%~dp0ResumeDetective.exe" --gateway --silent
 if errorlevel 1 goto launch_failed
 exit /b 0
 
