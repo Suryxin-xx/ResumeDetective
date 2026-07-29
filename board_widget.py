@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QStackedWidget,
     QLineEdit,
     QComboBox,
+    QCheckBox,
 )
 from PyQt6.QtCore import Qt, QSize, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor
@@ -208,6 +209,10 @@ class BoardWidget(QWidget):
         self.filter_status.currentTextChanged.connect(lambda _: self._apply_filter())
         filter_bar.addWidget(QLabel("状态："))
         filter_bar.addWidget(self.filter_status)
+        self.show_terminated = QCheckBox("显示终止岗位")
+        self.show_terminated.setChecked(False)
+        self.show_terminated.toggled.connect(self.refresh)
+        filter_bar.addWidget(self.show_terminated)
         layout.addLayout(filter_bar)
 
         # ── 视图容器（泳道 / 表格） ──
@@ -275,7 +280,7 @@ class BoardWidget(QWidget):
         list_widget.card_focused.connect(self.card_focused.emit)
         # 拖放后自动刷新看板
         list_widget.status_changed.connect(lambda *_: self.refresh())
-        self._columns[status] = {"list": list_widget, "header": header}
+        self._columns[status] = {"list": list_widget, "header": header, "widget": widget}
         layout.addWidget(list_widget, stretch=1)
 
         return widget
@@ -287,6 +292,11 @@ class BoardWidget(QWidget):
         except Exception as e:
             print("board refresh db error:", e)
             return
+        show_terminated = self.show_terminated.isChecked()
+        if not show_terminated:
+            apps = [app for app in apps if app["current_status"] != "终止"]
+        if "终止" in self._columns:
+            self._columns["终止"]["widget"].setVisible(show_terminated)
 
         # 客户端筛选
         kw = self._filter_kw

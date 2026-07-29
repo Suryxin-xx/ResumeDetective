@@ -11,17 +11,32 @@ function Assert-NoLocalSecrets([string]$root) {
 }
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$stageRoot = Join-Path $projectRoot "build\release-src"
+$stageRoot = Join-Path ([IO.Path]::GetTempPath()) "ResumeDetective-Build"
+$releaseRoot = Join-Path (Split-Path -Parent $projectRoot) "ResumeDetective-Releases"
 $stageBuildRoot = Join-Path $stageRoot "build"
 $stageDistRoot = Join-Path $stageRoot "dist"
 
-$buildFull = [IO.Path]::GetFullPath((Join-Path $projectRoot "build")).TrimEnd('\')
 $stageFull = [IO.Path]::GetFullPath($stageRoot).TrimEnd('\')
-if (-not $stageFull.StartsWith($buildFull + '\', [StringComparison]::OrdinalIgnoreCase)) {
+$expectedStageFull = [IO.Path]::GetFullPath(
+    (Join-Path ([IO.Path]::GetTempPath()) "ResumeDetective-Build")
+).TrimEnd('\')
+if (-not $stageFull.Equals($expectedStageFull, [StringComparison]::OrdinalIgnoreCase)) {
     throw "Refusing to recreate an unsafe staging path: $stageFull"
+}
+$releaseFull = [IO.Path]::GetFullPath($releaseRoot).TrimEnd('\')
+$expectedReleaseFull = [IO.Path]::GetFullPath(
+    (Join-Path (Split-Path -Parent $projectRoot) "ResumeDetective-Releases")
+).TrimEnd('\')
+if (-not $releaseFull.Equals($expectedReleaseFull, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to publish to an unsafe release path: $releaseFull"
 }
 
 Write-Host "Preparing clean release workspace..."
+
+& python -B -m unittest discover -s (Join-Path $projectRoot "tests") -p "test_*.py" -v
+if ($LASTEXITCODE -ne 0) {
+    throw "Automated tests failed. Refusing to build."
+}
 
 & python (Join-Path $PSScriptRoot "check_repository_safety.py")
 if ($LASTEXITCODE -ne 0) {
@@ -29,6 +44,13 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if (Test-Path $stageRoot) {
+    # Cloud-backed folders may preserve P/U/readonly attributes in a previous
+    # generated snapshot. Clear attributes only inside the already-validated
+    # build staging root before recreating it.
+    Get-ChildItem -LiteralPath $stageRoot -Recurse -Force -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            try { $_.Attributes = [IO.FileAttributes]::Normal } catch { }
+        }
     Remove-Item -LiteralPath $stageRoot -Recurse -Force
 }
 New-Item -ItemType Directory -Path $stageRoot | Out-Null
@@ -46,6 +68,8 @@ $includeFiles = @(
     "materials_widget.py",
     "job_targets_widget.py",
     "tasks_widget.py",
+    "interviews_widget.py",
+    "data_safety.py",
     "db_manager.py",
     "models.py",
     "ai_service.py",
@@ -95,7 +119,7 @@ if (Test-Path -LiteralPath $scriptsSrc -PathType Container) {
     Copy-Item -LiteralPath $scriptsSrc -Destination (Join-Path $stageRoot "scripts") -Recurse
 }
 
-$publicDirectories = @("data.example", ".github", ".githooks")
+$publicDirectories = @("data.example", ".github")
 foreach ($directory in $publicDirectories) {
     $sourceDirectory = Join-Path $projectRoot $directory
     if (Test-Path -LiteralPath $sourceDirectory -PathType Container) {
@@ -150,7 +174,7 @@ if (Test-Path $envExample) {
 
 @'
 {
-  "tab_order": ["board", "tasks", "materials", "ai", "targets", "tools"]
+  "tab_order": ["board", "tasks", "interviews", "materials", "ai", "targets", "tools"]
 }
 '@ | Set-Content -Path (Join-Path $stageRoot "data\config.json") -Encoding UTF8
 
@@ -165,8 +189,7 @@ Release package notes:
 Assert-NoLocalSecrets $stageRoot
 
 Write-Host ""
-Write-Host "Clean release workspace created at: $stageRoot"
-Write-Host "Build from that folder instead of packaging your live development directory."
+Write-Host "Temporary clean build workspace created at: $stageRoot"
 
 $pyinstaller = Get-Command pyinstaller -ErrorAction SilentlyContinue
 if ($pyinstaller) {
@@ -213,8 +236,13 @@ if ($pyinstaller) {
             Compress-Archive -Path $appDist -DestinationPath $archive -CompressionLevel Optimal
             $archiveHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
             Set-Content -LiteralPath "$archive.sha256" -Value "$archiveHash  $([IO.Path]::GetFileName($archive))" -Encoding ASCII
-            Write-Host "GitHub Release archive: $archive"
-            Write-Host "SHA256 file: $archive.sha256"
+            New-Item -ItemType Directory -Path $releaseRoot -Force | Out-Null
+            $publishedArchive = Join-Path $releaseRoot ([IO.Path]::GetFileName($archive))
+            $publishedHash = "$publishedArchive.sha256"
+            Copy-Item -LiteralPath $archive -Destination $publishedArchive -Force
+            Copy-Item -LiteralPath "$archive.sha256" -Destination $publishedHash -Force
+            Write-Host "GitHub Release archive: $publishedArchive"
+            Write-Host "SHA256 file: $publishedHash"
         } else {
             Write-Host ""
             Write-Host "PyInstaller finished with a non-zero exit code."

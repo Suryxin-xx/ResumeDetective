@@ -20,7 +20,9 @@ SHEET_NAME = "岗位投递"
 HEADERS = [
     ("记录ID", 10), ("公司", 20), ("岗位", 25), ("城市", 14),
     ("当前状态", 16), ("优先级", 10), ("状态更新时间", 20),
-    ("下一步行动", 36), ("面试反馈摘要", 44), ("简历路径", 36),
+    ("投递日期", 15), ("网申截止", 18), ("下一步行动", 36),
+    ("下一步时间", 20), ("最后跟进", 18),
+    ("面试反馈摘要", 44), ("简历路径", 36),
     ("投递来源", 18), ("岗位原始链接", 42), ("JD 原文快照", 70),
 ]
 _LOCK = Lock()
@@ -58,15 +60,17 @@ def sync_application_workbook(applications: list[dict] | None = None) -> Path:
             values = [
                 app.get("id"), app.get("company_name", ""), app.get("position_name", ""),
                 app.get("city", ""), app.get("current_status", ""), app.get("priority", 0),
-                app.get("status_update_time", ""), app.get("next_action", ""),
+                app.get("status_update_time", ""), app.get("applied_at", ""),
+                app.get("application_deadline", ""), app.get("next_action", ""),
+                app.get("next_action_due_at", ""), app.get("last_follow_up_at", ""),
                 app.get("interview_feedback", ""), app.get("file_path", ""),
                 app.get("application_source", ""), app.get("job_link", ""),
                 app.get("jd_text", ""),
             ]
             for column, value in enumerate(values, 1):
                 cell = ws.cell(row, column, value)
-                cell.alignment = Alignment(vertical="top", wrap_text=column in (3, 8, 9, 10, 11, 12, 13))
-                if column == 12 and value:
+                cell.alignment = Alignment(vertical="top", wrap_text=column in (3, 10, 13, 14, 15, 16, 17, 18))
+                if column == 17 and value:
                     cell.hyperlink = str(value)
                     cell.style = "Hyperlink"
             ws.row_dimensions[row].height = 48

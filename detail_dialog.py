@@ -21,7 +21,7 @@ class JobDetailDialog(QDialog):
     def __init__(self, app_data, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"{app_data['company_name']} - {app_data['position_name']}")
-        self.resize(540, 680)
+        self.resize(620, 780)
         self.setMinimumWidth(420)
 
         self._app_id = app_data["id"]
@@ -43,6 +43,10 @@ class JobDetailDialog(QDialog):
         self.edit_jd.textChanged.connect(lambda: self._defer("jd_text"))
         self.edit_feedback.textChanged.connect(lambda: self._defer("feedback"))
         self.edit_next.textChanged.connect(lambda: self._defer("next_action"))
+        self.edit_applied_at.textChanged.connect(lambda: self._defer("applied_at"))
+        self.edit_deadline.textChanged.connect(lambda: self._defer("application_deadline"))
+        self.edit_next_due.textChanged.connect(lambda: self._defer("next_action_due_at"))
+        self.edit_follow_up.textChanged.connect(lambda: self._defer("last_follow_up_at"))
         self.edit_priority.valueChanged.connect(lambda: self._defer("priority"))
 
         self._refresh_attachments()
@@ -87,6 +91,22 @@ class JobDetailDialog(QDialog):
         self.edit_job_link.setPlaceholderText("https://...")
         source_row.addWidget(self.edit_job_link, stretch=2)
         layout.addLayout(source_row)
+
+        dates = QGroupBox("时间节点")
+        dates_layout = QHBoxLayout(dates)
+        self.edit_applied_at = QLineEdit(data.get("applied_at", ""))
+        self.edit_applied_at.setPlaceholderText("投递 YYYY-MM-DD")
+        self.edit_deadline = QLineEdit(data.get("application_deadline", ""))
+        self.edit_deadline.setPlaceholderText("截止 YYYY-MM-DD")
+        self.edit_next_due = QLineEdit(data.get("next_action_due_at", ""))
+        self.edit_next_due.setPlaceholderText("下一步 YYYY-MM-DD HH:MM")
+        self.edit_follow_up = QLineEdit(data.get("last_follow_up_at", ""))
+        self.edit_follow_up.setPlaceholderText("跟进 YYYY-MM-DD")
+        for widget in (
+            self.edit_applied_at, self.edit_deadline, self.edit_next_due, self.edit_follow_up
+        ):
+            dates_layout.addWidget(widget)
+        layout.addWidget(dates)
 
         # ── 简历 ──
         resume_row = QHBoxLayout()
@@ -199,6 +219,14 @@ class JobDetailDialog(QDialog):
                 db_manager.update_application_details(self._app_id, next_action=self.edit_next.toPlainText())
             elif f == "priority":
                 db_manager.update_application_details(self._app_id, priority=self.edit_priority.value())
+            elif f == "applied_at":
+                db_manager.update_application_details(self._app_id, applied_at=self.edit_applied_at.text().strip())
+            elif f == "application_deadline":
+                db_manager.update_application_details(self._app_id, application_deadline=self.edit_deadline.text().strip())
+            elif f == "next_action_due_at":
+                db_manager.update_application_details(self._app_id, next_action_due_at=self.edit_next_due.text().strip())
+            elif f == "last_follow_up_at":
+                db_manager.update_application_details(self._app_id, last_follow_up_at=self.edit_follow_up.text().strip())
         except Exception:
             pass
         self._save_field = None

@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QListWidgetItem, QFileDialog, QMessageBox, QApplication, QComboBox,
     QGroupBox, QLineEdit, QFormLayout, QSpinBox, QDialogButtonBox,
     QAbstractItemView,
-    QDialog, QScrollBar, QScrollArea, QGridLayout,
+    QDialog, QScrollBar, QScrollArea, QGridLayout, QInputDialog,
 )
 from PyQt6.QtCore import QByteArray, Qt, QSize, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont, QColor, QAction, QTextCursor
@@ -24,6 +24,7 @@ import cli_ai
 import ai_service
 import paths
 import local_gateway
+import data_safety
 import chat_history as ch
 from board_widget import BoardWidget
 from table_view import TableView
@@ -31,6 +32,7 @@ from detail_dialog import JobDetailDialog
 from materials_widget import MaterialsWidget
 from job_targets_widget import JobTargetsWidget
 from tasks_widget import TasksWidget
+from interviews_widget import InterviewsWidget
 
 STATUS_COLORS = {
     "已投递": "#BBDEFB", "简历初筛": "#FFE0B2", "笔试/无笔试": "#E1BEE7",
@@ -98,6 +100,7 @@ class MainWindow(QMainWindow):
 
         self._init_board_page()
         self._init_tasks_page()
+        self._init_interviews_page()
         self._init_materials_page()
         self._init_ai_page()
         self._init_job_targets_page()
@@ -106,6 +109,7 @@ class MainWindow(QMainWindow):
         self._tab_defs = [
             ("board", self.page_board, "📋 投递看板"),
             ("tasks", self.page_tasks, "✓ 行动清单"),
+            ("interviews", self.page_interviews, "🎙 面试复盘"),
             ("materials", self.page_materials, "📚 资料库"),
             ("ai", self.page_ai, "🤖 AI 助手"),
             ("targets", self.page_job_targets, "🎯 意向公司"),
@@ -124,6 +128,7 @@ class MainWindow(QMainWindow):
         page_board = getattr(self, "page_board", None)
         page_materials = getattr(self, "page_materials", None)
         page_tasks = getattr(self, "page_tasks", None)
+        page_interviews = getattr(self, "page_interviews", None)
         page_job_targets = getattr(self, "page_job_targets", None)
         page_ai = getattr(self, "page_ai", None)
 
@@ -134,6 +139,8 @@ class MainWindow(QMainWindow):
             self.materials_widget.refresh()
         elif current is page_tasks and hasattr(self, 'tasks_widget'):
             self.tasks_widget.refresh()
+        elif current is page_interviews and hasattr(self, 'interviews_widget'):
+            self.interviews_widget.refresh()
         elif current is page_job_targets and hasattr(self, 'job_targets_widget'):
             self.job_targets_widget.refresh()
             self._refresh_ai_context_picker()
@@ -455,7 +462,13 @@ class MainWindow(QMainWindow):
                     job_link=data.get("job_link", ""),
                 )
                 if rid:
-                    db_manager.add_application(rid)
+                    db_manager.add_application(
+                        rid,
+                        applied_at=data.get("applied_at", ""),
+                        application_deadline=data.get("application_deadline", ""),
+                        next_action=data.get("next_action", ""),
+                        next_action_due_at=data.get("next_action_due_at", ""),
+                    )
                 self.board_widget.refresh()
                 self._refresh_ai_context_picker()
 
@@ -668,6 +681,13 @@ class MainWindow(QMainWindow):
         self.tasks_widget = TasksWidget()
         self.tasks_widget.data_changed.connect(self._on_safe_refresh)
         layout.addWidget(self.tasks_widget)
+
+    def _init_interviews_page(self):
+        self.page_interviews = QWidget()
+        layout = QVBoxLayout(self.page_interviews)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.interviews_widget = InterviewsWidget()
+        layout.addWidget(self.interviews_widget)
 
     def _init_materials_page(self):
         self.page_materials = QWidget()
@@ -1608,9 +1628,31 @@ class MainWindow(QMainWindow):
         grp4.setMinimumHeight(132)
         layout.addWidget(grp4, 1, 1)
 
+        # 数据安全
+        grp5 = QGroupBox("🛡 数据安全")
+        grp5.setStyleSheet(card_style)
+        g5 = QVBoxLayout(grp5)
+        g5.addWidget(QLabel("检查数据库完整性，或在独立目录创建可验证备份。恢复前会再次自动备份。"))
+        safety_row = QHBoxLayout()
+        btn_health = QPushButton("检查数据健康")
+        btn_health.setFixedHeight(38)
+        btn_health.clicked.connect(self._check_data_health)
+        safety_row.addWidget(btn_health)
+        btn_backup = QPushButton("立即备份")
+        btn_backup.setFixedHeight(38)
+        btn_backup.clicked.connect(self._create_data_backup)
+        safety_row.addWidget(btn_backup)
+        btn_restore = QPushButton("从备份恢复")
+        btn_restore.setFixedHeight(38)
+        btn_restore.clicked.connect(self._restore_data_backup)
+        safety_row.addWidget(btn_restore)
+        g5.addLayout(safety_row)
+        grp5.setMinimumHeight(124)
+        layout.addWidget(grp5, 2, 0, 1, 2)
+
         layout.setColumnStretch(0, 1)
         layout.setColumnStretch(1, 1)
-        layout.setRowStretch(2, 1)
+        layout.setRowStretch(3, 1)
 
     def _save_gateway_port(self):
         """保存端口并平滑切换正在运行的本机网关。"""
@@ -1623,6 +1665,62 @@ class MainWindow(QMainWindow):
             return
         self.gateway_url_label.setText(f"当前地址：{url}")
         self.statusBar().showMessage(f"网页网关已切换到 {url}", 6000)
+
+    def _check_data_health(self):
+        health = data_safety.database_health()
+        title = "数据健康" if health["ok"] else "数据异常"
+        version = health.get("schema_version", "—")
+        message = (
+            f"{health['message']}\n\n"
+            f"数据库：{health['path']}\n"
+            f"结构版本：{version}"
+        )
+        if health["ok"]:
+            QMessageBox.information(self, title, message)
+        else:
+            QMessageBox.warning(self, title, message)
+
+    def _create_data_backup(self):
+        try:
+            backup = data_safety.create_backup("manual")
+        except Exception as exc:
+            QMessageBox.warning(self, "备份失败", f"未修改当前数据。\n\n{exc}")
+            return
+        QMessageBox.information(self, "备份完成", f"已创建并校验备份：\n{backup}")
+
+    def _restore_data_backup(self):
+        backups = data_safety.list_backups()
+        if not backups:
+            QMessageBox.information(self, "没有可用备份", "请先点击“立即备份”。")
+            return
+        labels = [item.name for item in backups]
+        selected, ok = QInputDialog.getItem(
+            self, "选择备份", "要恢复的备份：", labels, 0, False
+        )
+        if not ok or not selected:
+            return
+        answer = QMessageBox.warning(
+            self,
+            "确认恢复",
+            "恢复会用所选备份覆盖对应的当前数据文件。\n"
+            "软件会先创建一份“恢复前备份”，完成后需要重启应用。\n\n"
+            f"所选备份：{selected}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            safety_backup = data_safety.restore_backup(data_safety.BACKUP_ROOT / selected)
+        except Exception as exc:
+            QMessageBox.critical(self, "恢复失败", f"请继续使用当前数据。\n\n{exc}")
+            return
+        QMessageBox.information(
+            self,
+            "恢复完成",
+            "数据已恢复，请关闭并重新启动 Resume Detective。\n\n"
+            f"恢复前备份：{safety_backup}",
+        )
 
     # ── PDF → 图片（子线程）──
 

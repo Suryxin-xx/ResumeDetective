@@ -5,7 +5,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QHeaderView, QAbstractItemView, QComboBox, QMenu, QMessageBox,
-    QLineEdit, QPushButton, QLabel,
+    QLineEdit, QPushButton, QLabel, QCheckBox,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QAction
@@ -53,6 +53,10 @@ class TableView(QWidget):
         self.filter_combo.currentIndexChanged.connect(self._apply_sort)
         toolbar.addWidget(QLabel("筛选："))
         toolbar.addWidget(self.filter_combo)
+        self.show_terminated = QCheckBox("显示终止")
+        self.show_terminated.setChecked(False)
+        self.show_terminated.toggled.connect(self._apply_sort)
+        toolbar.addWidget(self.show_terminated)
         toolbar.addStretch()
 
         layout.addLayout(toolbar)
@@ -216,6 +220,8 @@ class TableView(QWidget):
         self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
         apps = db_manager.get_applications_with_resume()
+        if not self.show_terminated.isChecked():
+            apps = [app for app in apps if app["current_status"] != "终止"]
 
         # 筛选
         if filter_status and filter_status != "全部状态":

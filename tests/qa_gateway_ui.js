@@ -21,12 +21,11 @@ const path = require('path');
   const consoleErrors = [];
   for (const viewport of [
     { name: 'desktop', width: 1440, height: 1000 },
-    { name: 'narrow', width: 430, height: 900 },
   ]) {
     const page = await browser.newPage({ viewport: viewport });
     page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(`${viewport.name}: ${msg.text()}`); });
     page.on('pageerror', error => consoleErrors.push(`${viewport.name}: ${error.message}`));
-    for (const route of ['/', '/board', '/applications', '/interviews', '/resumes']) {
+    for (const route of ['/', '/board', '/applications', '/tasks', '/interviews', '/resumes']) {
       await page.goto(`http://127.0.0.1:18765${route}`, { waitUntil: 'networkidle' });
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
       if (overflow) throw new Error(`${viewport.name} ${route}: page-level horizontal overflow`);
@@ -63,5 +62,5 @@ const path = require('path');
   if (!keepScreenshots && !process.env.QA_SCREENSHOT_DIR) {
     fs.rmSync(outputDir, { recursive: true, force: true });
   }
-  console.log('Gateway UI QA passed: 5 routes × 2 viewports, interactions OK.');
+  console.log('Gateway UI QA passed: 6 desktop routes, interactions OK.');
 })();

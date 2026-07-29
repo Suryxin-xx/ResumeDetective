@@ -60,10 +60,11 @@ class GatewayHttpTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn(b'"status":"ok"', payload)
 
-        page_cases = (("/", "overview"), ("/board", "board"), ("/applications", "apps"), ("/interviews", "interviews"), ("/resumes", "resumes"))
+        page_cases = (("/", "overview"), ("/board", "board"), ("/applications", "apps"), ("/tasks", "tasks"), ("/interviews", "interviews"), ("/resumes", "resumes"))
         with patch.object(local_gateway, "_overview_page", return_value="overview"), \
              patch.object(local_gateway, "_board_page", return_value="board"), \
              patch.object(local_gateway, "_applications_page", return_value="apps"), \
+             patch.object(local_gateway, "_tasks_page", return_value="tasks"), \
              patch.object(local_gateway, "_interviews_page", return_value="interviews"), \
              patch.object(local_gateway, "_resumes_page", return_value="resumes"):
             for path, expected in page_cases:

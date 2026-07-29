@@ -34,6 +34,8 @@ a = Analysis(
         'tools_imgpdf',
         'job_targets_widget',
         'tasks_widget',
+        'interviews_widget',
+        'data_safety',
         'local_gateway',
         'excel_sync',
         'secure_store',

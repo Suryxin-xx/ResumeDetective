@@ -75,6 +75,22 @@ class AddResumeDialog(QDialog):
         self.edit_job_link.setPlaceholderText("岗位官网链接（建议与 JD 快照一起保存）")
         form.addRow("岗位链接：", self.edit_job_link)
 
+        self.edit_applied_at = QLineEdit(datetime.now().strftime("%Y-%m-%d"))
+        self.edit_applied_at.setPlaceholderText("YYYY-MM-DD")
+        form.addRow("投递日期：", self.edit_applied_at)
+
+        self.edit_deadline = QLineEdit()
+        self.edit_deadline.setPlaceholderText("YYYY-MM-DD")
+        form.addRow("网申截止：", self.edit_deadline)
+
+        self.edit_next_action = QLineEdit()
+        self.edit_next_action.setPlaceholderText("例如：完成测评、准备一面")
+        form.addRow("下一步行动：", self.edit_next_action)
+
+        self.edit_next_due = QLineEdit()
+        self.edit_next_due.setPlaceholderText("YYYY-MM-DD HH:MM")
+        form.addRow("下一步时间：", self.edit_next_due)
+
         # JD 原文
         self.edit_jd = QTextEdit()
         self.edit_jd.setPlaceholderText("粘贴岗位描述（JD）原文...")
@@ -120,6 +136,10 @@ class AddResumeDialog(QDialog):
             "application_source": self.edit_source.text().strip(),
             "job_link": self.edit_job_link.text().strip(),
             "version_note": self.edit_version.text().strip(),
+            "applied_at": self.edit_applied_at.text().strip(),
+            "application_deadline": self.edit_deadline.text().strip(),
+            "next_action": self.edit_next_action.text().strip(),
+            "next_action_due_at": self.edit_next_due.text().strip(),
         }
         self.accept()
 

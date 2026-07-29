@@ -14,12 +14,13 @@ It first creates a clean staging tree and then runs PyInstaller from that tree.
 The staging step is intentional: it prevents local API keys, databases, resumes,
 chat history, Reasonix runtime files, and caches from entering the release.
 
-The build command creates an isolated workspace at:
+The build command creates a temporary isolated workspace at:
 
-- `build/release-src`
+- `%TEMP%\ResumeDetective-Build`
 
 The normal development folder is now the canonical GitHub source tree.
-`build/release-src` is only an isolated PyInstaller build workspace.
+The temporary PyInstaller workspace is removed by the public build entry point
+after both successful and failed builds.
 
 ## Windows release
 
@@ -29,24 +30,26 @@ Run the public build entry point from the project root:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_exe.ps1
 ```
 
-The final package is generated under:
+The permanent release-only folder is:
 
-- `build/release-src/dist/ResumeDetective`
+- sibling directory `ResumeDetective-Releases`
 
-The script also creates a versioned GitHub Release archive and SHA-256 file:
+It contains only versioned GitHub Release archives and SHA-256 files:
 
-- `build/release-src/dist/ResumeDetective-vX.Y.Z-windows-x64.zip`
-- `build/release-src/dist/ResumeDetective-vX.Y.Z-windows-x64.zip.sha256`
+- `ResumeDetective-Releases/ResumeDetective-vX.Y.Z-windows-x64.zip`
+- `ResumeDetective-Releases/ResumeDetective-vX.Y.Z-windows-x64.zip.sha256`
 
 It contains both launch modes:
 
 - `ResumeDetective.exe`: desktop application.
-- `ResumeDetectiveGateway.exe`: standalone localhost web dashboard.
-- `启动网页看板.bat`: one-click gateway launcher. It prefers the packaged
-  gateway EXE and falls back to local Python only in a source checkout.
+- `ResumeDetectiveGateway.exe`: standalone localhost web workspace with a
+  Windows system-tray controller and no console window.
+- `启动网页看板.bat`: one-click silent gateway launcher. It prefers the packaged
+  gateway EXE and falls back to `pythonw` only in a source checkout.
 
 The gateway listens on `127.0.0.1:8765` by default. The port can be changed
 in desktop Settings; both launch modes read the same local configuration.
+The tray menu opens the workspace or exits the background gateway.
 
 ## Important
 

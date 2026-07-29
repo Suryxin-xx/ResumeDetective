@@ -25,6 +25,10 @@ EXCEL_HEADERS = [
     ("备注", 20),
     ("投递来源", 18),
     ("岗位原始链接", 42),
+    ("投递日期", 15),
+    ("网申截止日期", 18),
+    ("下一步时间", 20),
+    ("最后跟进日期", 18),
 ]
 
 STATUS_VALUES = ["已投递", "简历初筛", "笔试/无笔试", "业务面试", "HR面", "Offer", "终止"]
@@ -71,6 +75,10 @@ def export_xlsx(output_path):
         ws.cell(row=row_idx, column=8, value="")
         ws.cell(row=row_idx, column=9, value=app.get("application_source", ""))
         ws.cell(row=row_idx, column=10, value=app.get("job_link", ""))
+        ws.cell(row=row_idx, column=11, value=app.get("applied_at", ""))
+        ws.cell(row=row_idx, column=12, value=app.get("application_deadline", ""))
+        ws.cell(row=row_idx, column=13, value=app.get("next_action_due_at", ""))
+        ws.cell(row=row_idx, column=14, value=app.get("last_follow_up_at", ""))
 
     wb.save(output_path)
     return len(apps)
@@ -109,6 +117,10 @@ def import_xlsx(input_path):
         version_note = str(row[7]).strip() if len(row) > 7 and row[7] else ""
         application_source = str(row[8]).strip() if len(row) > 8 and row[8] else ""
         job_link = str(row[9]).strip() if len(row) > 9 and row[9] else ""
+        applied_at = str(row[10]).strip() if len(row) > 10 and row[10] else ""
+        application_deadline = str(row[11]).strip() if len(row) > 11 and row[11] else ""
+        next_action_due_at = str(row[12]).strip() if len(row) > 12 and row[12] else ""
+        last_follow_up_at = str(row[13]).strip() if len(row) > 13 and row[13] else ""
 
         # 校验状态
         if status not in STATUS_VALUES:
@@ -131,12 +143,20 @@ def import_xlsx(input_path):
             application_source=application_source,
             job_link=job_link,
         )
-        app_id = db_manager.add_application(rid, status)
+        app_id = db_manager.add_application(
+            rid,
+            status,
+            applied_at=applied_at,
+            application_deadline=application_deadline,
+            next_action=next_action,
+            next_action_due_at=next_action_due_at,
+            last_follow_up_at=last_follow_up_at,
+        )
 
         # 写入反馈和下一步（同时刷新固定 Excel 镜像）
-        if feedback or next_action:
+        if feedback:
             db_manager.update_application_details(
-                app_id, interview_feedback=feedback, next_action=next_action
+                app_id, interview_feedback=feedback
             )
 
         count += 1
@@ -156,6 +176,7 @@ def generate_template(output_path):
     header_desc = [
         "必填", "必填", "可选，本地简历文件路径", "可选",
         f"可选，默认'已投递'，可选值见「状态说明」sheet", "可选", "可选", "可选", "可选", "可选",
+        "可选，YYYY-MM-DD", "可选，YYYY-MM-DD", "可选，YYYY-MM-DD HH:MM", "可选，YYYY-MM-DD",
     ]
     for col_idx, ((name, width), desc) in enumerate(zip(EXCEL_HEADERS, header_desc), 1):
         cell = ws.cell(row=1, column=col_idx, value=name)
@@ -166,7 +187,8 @@ def generate_template(output_path):
 
     example = ["字节跳动", "后端开发", "<请选择本地简历文件>",
                "负责后端服务开发...", "业务面试", "一面通过", "准备二面", "v2.0",
-               "内推", "https://jobs.example.com/position/123"]
+               "内推", "https://jobs.example.com/position/123",
+               "2026-07-28", "2026-08-10", "2026-08-02 19:00", "2026-07-30"]
     for col_idx, val in enumerate(example, 1):
         ws.cell(row=3, column=col_idx, value=val)
 
