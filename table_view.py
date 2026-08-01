@@ -13,10 +13,11 @@ from PyQt6.QtGui import QColor, QAction
 import db_manager
 
 STATUS_COLORS = {
-    "已投递": "#BBDEFB", "简历初筛": "#FFE0B2", "笔试/无笔试": "#E1BEE7",
-    "业务面试": "#C8E6C9", "HR面": "#B2EBF2", "Offer": "#FFCDD2", "终止": "#CFD8DC",
+    "已投递": "#BBDEFB", "简历筛选": "#FFE0B2", "测评": "#E1BEE7",
+    "AI 面试": "#B2EBF2", "笔试": "#E1BEE7", "业务面试": "#C8E6C9",
+    "HR 面": "#B2EBF2", "Offer": "#FFCDD2", "终止": "#CFD8DC",
 }
-STATUS_LIST = ["已投递", "简历初筛", "笔试/无笔试", "业务面试", "HR面", "Offer", "终止"]
+STATUS_LIST = db_manager.APPLICATION_STATUSES
 HEADERS = ["#", "优先级", "公司", "岗位", "城市", "当前状态", "投递时间", "更新时间", "状态历史"]
 COL_WIDTHS = [40, 100, 140, 140, 100, 120, 140, 140, 220]
 

@@ -1,6 +1,6 @@
 """只监听 localhost 的本地求职工作台，无第三方 Web 框架依赖。"""
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -13,7 +13,9 @@ import secrets
 import uuid
 
 import config_manager
+import branding
 import db_manager
+import data_safety
 import file_ops
 import paths
 
@@ -26,6 +28,7 @@ _server_port = None
 _control_handler = None
 _address_handler = None
 _control_token = None
+_backup_timer = None
 _CONTROL_DELAY_SECONDS = 0.35
 
 
@@ -62,6 +65,28 @@ def _schedule_gateway_control(action: str) -> None:
     timer.start()
 
 
+def _schedule_automatic_backup_check(delay=1.0) -> None:
+    """网关存活期间低频检查；只有用户启用且到期才真正写入备份。"""
+    global _backup_timer
+
+    def check():
+        global _backup_timer
+        try:
+            data_safety.maybe_create_automatic_backup()
+        except Exception as exc:
+            print(f"[自动备份] 本次未完成：{exc}")
+        if _server is not None:
+            _backup_timer = Timer(60 * 60, check)
+            _backup_timer.daemon = True
+            _backup_timer.start()
+
+    if _backup_timer is not None:
+        _backup_timer.cancel()
+    _backup_timer = Timer(delay, check)
+    _backup_timer.daemon = True
+    _backup_timer.start()
+
+
 def _gateway_controls() -> str:
     if _control_handler is None or not _control_token:
         return ""
@@ -73,7 +98,11 @@ def _gateway_controls() -> str:
 
 
 def _status_class(status: str) -> str:
-    return {"已投递": "blue", "简历初筛": "amber", "笔试/无笔试": "purple", "业务面试": "green", "HR面": "cyan", "Offer": "rose", "终止": "gray"}.get(status, "gray")
+    return {
+        "已投递": "blue", "简历筛选": "amber", "测评": "purple",
+        "AI 面试": "cyan", "笔试": "purple", "业务面试": "green",
+        "HR 面": "cyan", "Offer": "rose", "终止": "gray",
+    }.get(status, "gray")
 
 
 def _status_options(current="已投递") -> str:
@@ -82,6 +111,32 @@ def _status_options(current="已投递") -> str:
 
 def _priority_options(current=0) -> str:
     return "".join(f'<option value="{item}" {"selected" if item == current else ""}>{item}</option>' for item in range(6))
+
+
+def _stage_state_options(current="已完成，等待结果") -> str:
+    return "".join(
+        f'<option value="{escape(item)}" {"selected" if item == current else ""}>{escape(item)}</option>'
+        for item in db_manager.APPLICATION_STAGE_STATES
+    )
+
+
+NEXT_ACTION_PRESETS = [
+    "等待结果", "完成在线测评", "准备 AI 面试", "准备笔试",
+    "准备业务面试", "准备 HR 面", "主动跟进进度", "补充或更新简历",
+    "比较 Offer",
+]
+JOB_CATEGORY_PRESETS = [
+    "研发", "算法", "数据", "产品", "设计", "运营", "市场", "销售",
+    "供应链", "职能", "咨询", "其他",
+]
+
+
+def _datalist(identifier: str, values: list[str]) -> str:
+    return (
+        f'<datalist id="{escape(identifier)}">'
+        + "".join(f'<option value="{escape(item)}"></option>' for item in values)
+        + "</datalist>"
+    )
 
 
 def _display_time(value) -> str:
@@ -151,6 +206,7 @@ def _application_search_text(app: dict) -> str:
         "company_name", "position_name", "city", "current_status",
         "application_source", "next_action", "jd_text", "applied_at",
         "application_deadline", "next_action_due_at", "last_follow_up_at",
+        "stage_state", "job_category", "tags",
     )).lower()
 
 
@@ -263,13 +319,42 @@ FLOW_STYLES = '''<style>
 .flow-preview{display:block;margin-top:5px;color:#68788e;font-size:11px;line-height:1.45;word-break:break-word}.flow-details{margin-top:10px;border:1px solid #dbe3ee;border-radius:9px;background:#fff;overflow:hidden}.flow-details>summary{cursor:pointer;padding:8px 10px;color:#3d506d;font-size:12px;font-weight:750}.flow-details[open]>summary{border-bottom:1px solid #e5eaf2;background:#f7f9fd}.flow-details ol{list-style:none;margin:0;padding:5px 10px}.flow-details li{display:flex;gap:9px;padding:7px 0;border-top:1px solid #edf0f4;color:#435169;font-size:12px}.flow-details li:first-child{border-top:0}.flow-details time{min-width:112px;font-size:11px}.flow-details.compact{margin-top:8px}.flow-details.compact>summary{padding:7px 8px;font-size:11px}.flow-details.compact li{font-size:11px;padding:6px 0}@media(max-width:580px){.flow-details li{align-items:flex-start;flex-direction:column;gap:1px}.flow-details time{min-width:0}}
 </style>'''
 
+WORKFLOW_STYLES = '''<style>
+.brand-block{min-width:0}.brand-block h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.today{margin-top:3px;color:#64748a;font-size:12px}.stage-rail{display:grid;grid-template-columns:repeat(8,minmax(92px,1fr));gap:0;margin:3px 0 16px;overflow:auto;padding-bottom:3px}.stage-step{position:relative;min-width:92px;padding:13px 10px;background:#fff;border:1px solid #dfe6ef;border-left:0;text-align:center}.stage-step:first-child{border-left:1px solid #dfe6ef;border-radius:12px 0 0 12px}.stage-step:last-child{border-radius:0 12px 12px 0}.stage-step:not(:last-child):after{content:"";position:absolute;right:-5px;top:50%;z-index:1;width:9px;height:9px;background:#fff;border-top:1px solid #cbd6e5;border-right:1px solid #cbd6e5;transform:translateY(-50%) rotate(45deg)}.stage-step span{display:block;color:#607089;font-size:11px;white-space:nowrap}.stage-step b{display:block;margin-top:4px;font-size:21px}.stage-step.has-items{background:#f4f7ff}.stage-step.has-items:after{background:#f4f7ff}.stage-state{display:inline-flex;margin-top:5px;padding:3px 7px;border-radius:99px;background:#eef3f9;color:#52647c;font-size:11px;font-weight:700}.tag{display:inline-flex;margin:2px 4px 2px 0;padding:3px 7px;border-radius:99px;background:#edf3ff;color:#315fba;font-size:11px}.manage-row td{padding:0!important;background:#f7faff!important}.manage-row .manage-panel{margin:0;border:0;border-top:2px solid #7fa4ee;border-radius:0;padding:18px 20px;box-shadow:inset 0 8px 18px rgba(31,78,143,.04)}.optional-fields{grid-column:1/-1;border:1px solid #dbe3ee;border-radius:9px;background:#fff}.optional-fields>summary{cursor:pointer;padding:10px 12px;color:#52647c;font-weight:700}.optional-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:0 12px 12px}.footer{display:flex;justify-content:space-between;gap:12px;margin-top:25px;padding-top:15px;border-top:1px solid #e1e7f0;color:#768397;font-size:11px}.footer a{color:#526f9f}.settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.settings-card{border:1px solid #dfe6ef;border-radius:12px;padding:16px;background:#fbfcff}.settings-card h3{margin-bottom:12px}.settings-card form{display:grid;gap:12px}.setting-row{display:flex;align-items:center;gap:9px}.setting-row input[type=checkbox]{width:18px;height:18px;min-height:18px}.field-note{color:#6b788c;font-size:11px;font-weight:400}.filter-select{min-width:150px}.backup-status{padding:11px;border-radius:9px;background:#eef6ff;color:#385576;font-size:12px}
+@media(max-width:900px){.stage-rail{grid-template-columns:repeat(8,110px)}.settings-grid{grid-template-columns:1fr}.optional-grid{grid-template-columns:1fr}}
+</style>'''
+
+BRANDING_STYLES = '''<style>
+.footer-signature{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}.footer-signature a{text-decoration:none}.footer-signature a:hover{text-decoration:underline}.about-card{background:linear-gradient(145deg,#f8faff,#eef4ff)}.about-list{display:grid;gap:10px;margin-top:12px}.about-line{display:flex;align-items:flex-start;gap:10px;color:#42526a}.about-label{min-width:58px;color:#77859a;font-size:12px}.about-line a{color:#275fce;text-decoration:none;overflow-wrap:anywhere}.about-line a:hover{text-decoration:underline}.about-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.about-actions a{display:inline-flex;align-items:center;min-height:36px;padding:8px 11px;border-radius:8px;background:#e5edff;color:#245bc6;font-size:12px;font-weight:750;text-decoration:none}
+</style>'''
+
 
 def _layout(title: str, current: str, body: str, port: int) -> str:
-    nav = f'''<nav><a class="{"active" if current == "overview" else ""}" href="/">总览</a><a class="{"active" if current == "board" else ""}" href="/board">状态看板</a><a class="{"active" if current == "applications" else ""}" href="/applications">投递管理</a><a class="{"active" if current == "tasks" else ""}" href="/tasks">行动清单</a><a class="{"active" if current == "interviews" else ""}" href="/interviews">面试复盘</a><a class="{"active" if current == "resumes" else ""}" href="/resumes">简历汇总</a></nav>'''
-    body = UI_ENHANCEMENTS + ARCHIVE_STYLES + FLOW_STYLES + body
+    nav = f'''<nav><a class="{"active" if current == "overview" else ""}" href="/">总览</a><a class="{"active" if current == "board" else ""}" href="/board">状态看板</a><a class="{"active" if current == "applications" else ""}" href="/applications">投递管理</a><a class="{"active" if current == "tasks" else ""}" href="/tasks">行动清单</a><a class="{"active" if current == "interviews" else ""}" href="/interviews">面试复盘</a><a class="{"active" if current == "resumes" else ""}" href="/resumes">简历汇总</a><a class="{"active" if current == "settings" else ""}" href="/settings">设置</a></nav>'''
+    body = UI_ENHANCEMENTS + ARCHIVE_STYLES + FLOW_STYLES + WORKFLOW_STYLES + BRANDING_STYLES + body
     controls = _gateway_controls()
+    preferences = config_manager.get_workspace_preferences()
+    now = datetime.now()
+    weekday = "一二三四五六日"[now.weekday()]
+    today_text = f"{now.year}年{now.month}月{now.day}日 · 星期{weekday}"
+    developer = escape(branding.DEVELOPER_NAME)
+    email = escape(branding.CONTACT_EMAIL)
+    project_url = escape(branding.PROJECT_URL, quote=True)
+    footer_identity = (
+        f'<span class="footer-signature"><span>开发者：{developer}</span><span>·</span>'
+        f'<a href="mailto:{email}">{email}</a><span>·</span>'
+        f'<a href="{project_url}" target="_blank" rel="noreferrer">GitHub</a></span>'
+    )
+    body += '''<script>
+    // rdStageSync：使用事件委托，动态展开的投递编辑行也能同步新环节的默认情况。
+    document.addEventListener('change', event => {
+      if (!event.target.matches('.manage-form select[name="status"]')) return;
+      const state = event.target.form.elements.namedItem('stage_state');
+      state.selectedIndex = ['Offer', '终止'].includes(event.target.value) ? 3 : 0;
+    });
+    </script>'''
     return f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{escape(title)} · Resume Detective</title><style>
-    :root{{--bg:#f5f7fb;--paper:#fff;--ink:#182235;--muted:#64748a;--line:#e1e7f0;--brand:#2d68df;--danger:#cb3a46;--shadow:0 8px 26px rgba(25,37,62,.07)}}*{{box-sizing:border-box}}html,body{{max-width:100%;overflow-x:hidden}}body{{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 "Segoe UI","Microsoft YaHei UI","Microsoft YaHei","PingFang SC",sans-serif}}.shell{{width:100%;max-width:1280px;margin:auto;padding:0 20px 50px}}header{{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:24px 0 17px;border-bottom:1px solid var(--line)}}h1{{margin:0;font-size:23px;letter-spacing:-.01em}}.header-actions{{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}}.local{{font-size:12px;font-weight:700;color:#187546;background:#e7f8ee;padding:7px 10px;border-radius:99px;white-space:nowrap}}.gateway-controls{{display:flex;gap:7px;align-items:center}}.compact-control{{min-height:34px;padding:6px 10px;font-size:12px}}nav{{display:flex;flex-wrap:wrap;gap:6px;padding:15px 0}}nav a{{text-decoration:none;color:#4f6078;padding:8px 12px;border-radius:8px;font-weight:700}}nav a:hover{{background:#eaf0ff;color:#235bcd}}nav a.active{{background:#2d68df;color:#fff}}.stats{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:2px 0 16px}}.stat,.panel{{min-width:0;background:var(--paper);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}}.stat{{padding:15px 17px}}.stat span,.hint{{color:var(--muted);font-size:12px}}.stat b{{display:block;font-size:25px;margin-top:5px}}.stat.primary{{background:linear-gradient(130deg,#2b66dd,#6793ec);border:0;color:#fff}}.stat.primary span{{color:#dfeaff}}.panel{{padding:20px;margin-bottom:16px}}.panel-head{{display:flex;justify-content:space-between;gap:15px;align-items:start;margin-bottom:16px}}h2{{margin:0 0 5px;font-size:18px}}h3{{margin:0;font-size:16px}}.grid-two{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}}form{{margin:0}}label{{display:grid;gap:7px;color:#43536b;font-size:13px;font-weight:750}}input,select,textarea,button{{font-family:inherit;border-radius:8px;padding:9px 10px}}input,select,textarea{{border:1px solid #ccd6e4;background:#fff;color:#1c2a40;min-width:0}}textarea{{min-height:96px;resize:vertical;line-height:1.55}}button{{border:0;background:var(--brand);color:#fff;font-weight:700;cursor:pointer}}button:hover{{background:#1e57ca}}button.danger{{background:#fff0f1;color:var(--danger)}}button.danger:hover{{background:#ffe3e5}}.add-form{{display:grid;grid-template-columns:1fr 1.15fr .75fr .8fr .55fr;gap:12px;align-items:end}}.add-form .wide{{grid-column:span 2}}.add-form .file{{grid-column:span 2}}.add-form button{{height:42px}}.toolbar{{display:flex;gap:8px;align-items:center}}.toolbar input{{width:280px}}.ghost{{background:#edf2fe;color:#275fce}}.badge{{padding:5px 8px;border-radius:7px;font-size:12px;font-weight:700;white-space:nowrap}}.blue{{background:#e9f1ff;color:#245fd4}}.amber{{background:#fff1dc;color:#a85b08}}.purple{{background:#f1eaff;color:#7441b5}}.green{{background:#e3f7ec;color:#197c4b}}.cyan{{background:#dff5f8;color:#176b7b}}.rose{{background:#ffe7ee;color:#a62f54}}.gray{{background:#eef1f5;color:#5f6d80}}.manage-form{{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end}}.manage-form .wide{{grid-column:1/-1}}.resume-row{{display:flex;gap:10px;align-items:center;padding:11px;border:1px dashed #bdcbe0;border-radius:9px;grid-column:1/-1}}.resume-row input{{padding:0;border:0;flex:1;max-width:100%}}.resume-row a{{font-size:12px;color:#2460d0;white-space:nowrap}}.actions{{display:flex;gap:8px;grid-column:1/-1}}.actions button{{flex:1}}.todo,.reviews{{list-style:none;padding:0;margin:0}}.todo li,.review{{padding:11px 0;border-top:1px solid var(--line);line-height:1.5}}.todo li:first-child,.review:first-child{{border-top:0;padding-top:0}}time{{font-size:12px;color:#52647c;display:inline-block;min-width:90px}}time.overdue{{color:#be3740}}.next-list{{display:grid;gap:10px}}.next-item{{border:1px solid var(--line);border-radius:10px;padding:12px}}.next-item b{{display:block}}.next-item p{{margin:5px 0 0;color:#48566c}}.empty{{margin:0;color:var(--muted);line-height:1.6}}.hidden{{display:none!important}}@media(max-width:850px){{.add-form{{grid-template-columns:1fr 1fr}}.add-form .wide,.add-form .file{{grid-column:auto}}.add-form button{{grid-column:1/-1}}.grid-two{{grid-template-columns:1fr}}}}@media(max-width:580px){{.shell{{padding:0 13px 36px}}header{{align-items:flex-start;flex-direction:column}}.header-actions{{justify-content:flex-start}}.stats{{grid-template-columns:repeat(2,minmax(0,1fr))}}.panel{{padding:16px}}.panel-head{{flex-direction:column}}.toolbar{{width:100%;flex-direction:column;align-items:stretch}}.toolbar input{{width:100%}}.add-form,.manage-form{{grid-template-columns:1fr}}.add-form .wide,.add-form .file,.manage-form .wide{{grid-column:auto}}.resume-row{{grid-column:auto;align-items:start;flex-direction:column}}.actions{{grid-column:auto;flex-direction:column}}}}</style></head><body><main class="shell"><header><h1>秋招工作台</h1><div class="header-actions"><div class="local">仅本机访问 · 127.0.0.1:{port}</div>{controls}</div></header>{nav}{body}</main></body></html>'''
+    :root{{--bg:#f5f7fb;--paper:#fff;--ink:#182235;--muted:#64748a;--line:#e1e7f0;--brand:#2d68df;--danger:#cb3a46;--shadow:0 8px 26px rgba(25,37,62,.07)}}*{{box-sizing:border-box}}html,body{{max-width:100%;overflow-x:hidden}}body{{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 "Segoe UI","Microsoft YaHei UI","Microsoft YaHei","PingFang SC",sans-serif}}.shell{{width:100%;max-width:1280px;margin:auto;padding:0 20px 50px}}header{{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:24px 0 17px;border-bottom:1px solid var(--line)}}h1{{margin:0;font-size:23px;letter-spacing:-.01em}}.header-actions{{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}}.local{{font-size:12px;font-weight:700;color:#187546;background:#e7f8ee;padding:7px 10px;border-radius:99px;white-space:nowrap}}.gateway-controls{{display:flex;gap:7px;align-items:center}}.compact-control{{min-height:34px;padding:6px 10px;font-size:12px}}nav{{display:flex;flex-wrap:wrap;gap:6px;padding:15px 0}}nav a{{text-decoration:none;color:#4f6078;padding:8px 12px;border-radius:8px;font-weight:700}}nav a:hover{{background:#eaf0ff;color:#235bcd}}nav a.active{{background:#2d68df;color:#fff}}.stats{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:2px 0 16px}}.stat,.panel{{min-width:0;background:var(--paper);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}}.stat{{padding:15px 17px}}.stat span,.hint{{color:var(--muted);font-size:12px}}.stat b{{display:block;font-size:25px;margin-top:5px}}.stat.primary{{background:linear-gradient(130deg,#2b66dd,#6793ec);border:0;color:#fff}}.stat.primary span{{color:#dfeaff}}.panel{{padding:20px;margin-bottom:16px}}.panel-head{{display:flex;justify-content:space-between;gap:15px;align-items:start;margin-bottom:16px}}h2{{margin:0 0 5px;font-size:18px}}h3{{margin:0;font-size:16px}}.grid-two{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}}form{{margin:0}}label{{display:grid;gap:7px;color:#43536b;font-size:13px;font-weight:750}}input,select,textarea,button{{font-family:inherit;border-radius:8px;padding:9px 10px}}input,select,textarea{{border:1px solid #ccd6e4;background:#fff;color:#1c2a40;min-width:0}}textarea{{min-height:96px;resize:vertical;line-height:1.55}}button{{border:0;background:var(--brand);color:#fff;font-weight:700;cursor:pointer}}button:hover{{background:#1e57ca}}button.danger{{background:#fff0f1;color:var(--danger)}}button.danger:hover{{background:#ffe3e5}}.add-form{{display:grid;grid-template-columns:1fr 1.15fr .75fr .8fr .55fr;gap:12px;align-items:end}}.add-form .wide{{grid-column:span 2}}.add-form .file{{grid-column:span 2}}.add-form button{{height:42px}}.toolbar{{display:flex;gap:8px;align-items:center}}.toolbar input{{width:280px}}.ghost{{background:#edf2fe;color:#275fce}}.badge{{padding:5px 8px;border-radius:7px;font-size:12px;font-weight:700;white-space:nowrap}}.blue{{background:#e9f1ff;color:#245fd4}}.amber{{background:#fff1dc;color:#a85b08}}.purple{{background:#f1eaff;color:#7441b5}}.green{{background:#e3f7ec;color:#197c4b}}.cyan{{background:#dff5f8;color:#176b7b}}.rose{{background:#ffe7ee;color:#a62f54}}.gray{{background:#eef1f5;color:#5f6d80}}.manage-form{{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end}}.manage-form .wide{{grid-column:1/-1}}.resume-row{{display:flex;gap:10px;align-items:center;padding:11px;border:1px dashed #bdcbe0;border-radius:9px;grid-column:1/-1}}.resume-row input{{padding:0;border:0;flex:1;max-width:100%}}.resume-row a{{font-size:12px;color:#2460d0;white-space:nowrap}}.actions{{display:flex;gap:8px;grid-column:1/-1}}.actions button{{flex:1}}.todo,.reviews{{list-style:none;padding:0;margin:0}}.todo li,.review{{padding:11px 0;border-top:1px solid var(--line);line-height:1.5}}.todo li:first-child,.review:first-child{{border-top:0;padding-top:0}}time{{font-size:12px;color:#52647c;display:inline-block;min-width:90px}}time.overdue{{color:#be3740}}.next-list{{display:grid;gap:10px}}.next-item{{border:1px solid var(--line);border-radius:10px;padding:12px}}.next-item b{{display:block}}.next-item p{{margin:5px 0 0;color:#48566c}}.empty{{margin:0;color:var(--muted);line-height:1.6}}.hidden{{display:none!important}}@media(max-width:850px){{.add-form{{grid-template-columns:1fr 1fr}}.add-form .wide,.add-form .file{{grid-column:auto}}.add-form button{{grid-column:1/-1}}.grid-two{{grid-template-columns:1fr}}}}@media(max-width:580px){{.shell{{padding:0 13px 36px}}header{{align-items:flex-start;flex-direction:column}}.header-actions{{justify-content:flex-start}}.stats{{grid-template-columns:repeat(2,minmax(0,1fr))}}.panel{{padding:16px}}.panel-head{{flex-direction:column}}.toolbar{{width:100%;flex-direction:column;align-items:stretch}}.toolbar input{{width:100%}}.add-form,.manage-form{{grid-template-columns:1fr}}.add-form .wide,.add-form .file,.manage-form .wide{{grid-column:auto}}.resume-row{{grid-column:auto;align-items:start;flex-direction:column}}.actions{{grid-column:auto;flex-direction:column}}}}</style></head><body><main class="shell"><header><div class="brand-block"><h1>{escape(preferences["title"])}</h1><div class="today">{escape(today_text)}</div></div><div class="header-actions"><div class="local">仅本机访问 · 127.0.0.1:{port}</div>{controls}</div></header>{nav}{body}<footer class="footer"><span>Resume Detective</span><span>{footer_identity}</span></footer></main></body></html>'''
 
 
 def _overview_page(port: int) -> str:
@@ -279,9 +364,22 @@ def _overview_page(port: int) -> str:
     upcoming = [item for item in tasks if item.get("due_date") and item["due_date"] <= week][:8]
     next_actions = [item for item in active if item.get("next_action")][:8]
     todo_html = "".join(f'<li><time class="{"overdue" if item["due_date"] < today else ""}">{escape(item["due_date"])}</time>{escape(item["title"])}</li>' for item in upcoming) or '<li class="empty">未来 7 天没有已安排待办。</li>'
-    next_html = "".join(f'<article class="next-item"><b>{escape(item["company_name"])} · {escape(item["position_name"])}</b><p>{escape(item["next_action"])}</p></article>' for item in next_actions) or '<p class="empty">流程中岗位暂未填写下一步行动。</p>'
-    body = f'''<section class="stats"><div class="stat primary"><span>全部投递</span><b>{len(apps)}</b></div><div class="stat"><span>流程中</span><b>{len(active)}</b></div><div class="stat"><span>面试阶段</span><b>{sum(item["current_status"] in ("业务面试", "HR面") for item in apps)}</b></div><div class="stat"><span>Offer</span><b>{sum(item["current_status"] == "Offer" for item in apps)}</b></div></section>
-    <div class="grid-two"><section class="panel"><div class="panel-head"><div><h2>近期待办</h2><div class="hint">未来 7 天内的行动清单</div></div><a class="btn ghost table-button" href="/tasks">管理全部</a></div><ul class="todo">{todo_html}</ul></section><section class="panel"><div class="panel-head"><div><h2>流程中的下一步</h2><div class="hint">来自岗位投递记录</div></div></div><div class="next-list">{next_html}</div></section></div><section class="panel"><div class="panel-head"><div><h2>快速进入工作区</h2><div class="hint">总览只保留今天真正需要关注的信息。</div></div></div><div class="quick-grid"><a class="quick-link" href="/applications"><b>管理投递</b><span>搜索、筛选并只展开当前要修改的岗位</span></a><a class="quick-link" href="/tasks"><b>处理行动清单</b><span>集中查看手动待办和岗位下一步</span></a><a class="quick-link" href="/interviews"><b>记录面试复盘</b><span>独立记录每轮问题、表现与补强点</span></a></div></section>'''
+    next_html = "".join(
+        f'<article class="next-item"><b>{escape(item["company_name"])} · {escape(item["position_name"])}</b>'
+        f'<span class="stage-state">{escape(item.get("current_status") or "")} · {escape(item.get("stage_state") or "未记录")}</span>'
+        f'<p>{escape(item["next_action"])}</p></article>'
+        for item in next_actions
+    ) or '<p class="empty">流程中岗位暂未填写下一步行动。</p>'
+    rail_statuses = [status for status in db_manager.APPLICATION_STATUSES if status not in ("Offer", "终止")]
+    rail = "".join(
+        f'<div class="stage-step {"has-items" if count else ""}"><span>{escape(status)}</span><b>{count}</b></div>'
+        for status in rail_statuses
+        for count in [sum(item["current_status"] == status for item in active)]
+    )
+    waiting = sum(item.get("stage_state") == "已完成，等待结果" for item in active)
+    action_needed = sum(item.get("stage_state") in ("待处理", "已安排") for item in active)
+    body = f'''<section class="panel"><div class="panel-head"><div><h2>招聘流程分布</h2><div class="hint">“当前环节”表示已经进入的环节；完成后先改为“已完成，等待结果”，收到下一环节通知再向右移动。</div></div><a class="btn ghost table-button" href="/applications">更新状态</a></div><div class="stage-rail">{rail}</div><section class="stats"><div class="stat primary"><span>当前推进</span><b>{len(active)}</b></div><div class="stat"><span>待处理 / 已安排</span><b>{action_needed}</b></div><div class="stat"><span>已完成待结果</span><b>{waiting}</b></div><div class="stat"><span>Offer</span><b>{sum(item["current_status"] == "Offer" for item in apps)}</b></div></section></section>
+    <div class="grid-two"><section class="panel"><div class="panel-head"><div><h2>近期待办</h2><div class="hint">未来 7 天内的行动清单</div></div><a class="btn ghost table-button" href="/tasks">管理全部</a></div><ul class="todo">{todo_html}</ul></section><section class="panel"><div class="panel-head"><div><h2>流程中的下一步</h2><div class="hint">同时显示当前环节和当前情况</div></div></div><div class="next-list">{next_html}</div></section></div><section class="panel"><div class="panel-head"><div><h2>快速进入工作区</h2><div class="hint">总览只保留今天真正需要关注的信息。</div></div></div><div class="quick-grid"><a class="quick-link" href="/applications"><b>管理投递</b><span>原位展开、按环节与岗位标签筛选</span></a><a class="quick-link" href="/tasks"><b>处理行动清单</b><span>集中查看手动待办和岗位下一步</span></a><a class="quick-link" href="/interviews"><b>记录面试复盘</b><span>独立记录每轮问题、表现与补强点</span></a></div></section>'''
     return _layout("总览", "overview", body, port)
 
 
@@ -294,7 +392,7 @@ def _board_page(port: int) -> str:
     for status in (item for item in db_manager.APPLICATION_STATUSES if item != "终止"):
         status_apps = [item for item in active_apps if item["current_status"] == status]
         cards = "".join(
-            f'''<article class="lane-card" data-search="{escape(_application_search_text(item))}"><b>{escape(item["company_name"])}</b><p>{escape(item["position_name"])} · {escape(item.get("city") or "地点未填")}</p><small>来源：{escape(item.get("application_source") or "未记录")}<br>下一步：{escape(item.get("next_action") or "暂未填写")}<br>状态更新：{escape(_display_time(item.get("status_update_time")))}</small>{_flow_details(item, compact=True)}</article>'''
+            f'''<article class="lane-card" data-search="{escape(_application_search_text(item))}"><b>{escape(item["company_name"])}</b><p>{escape(item["position_name"])} · {escape(item.get("city") or "地点未填")}</p><span class="stage-state">{escape(item.get("stage_state") or "未记录")}</span><small>类型：{escape(item.get("job_category") or "未分类")} · 来源：{escape(item.get("application_source") or "未记录")}<br>下一步：{escape(item.get("next_action") or "暂未填写")}<br>状态更新：{escape(_display_time(item.get("status_update_time")))}</small>{_flow_details(item, compact=True)}</article>'''
             for item in status_apps
         ) or '<div class="lane-empty">暂无岗位</div>'
         lanes.append(f'''<section class="lane"><div class="lane-head"><h3><span class="badge {_status_class(status)}">{escape(status)}</span></h3><span class="lane-count">{len(status_apps)}</span></div><div class="lane-body">{cards}</div></section>''')
@@ -306,8 +404,8 @@ def _board_page(port: int) -> str:
     for app in apps:
         archived = app["current_status"] == "终止"
         action = '<a class="btn ghost table-button" href="/applications">查看归档</a>' if archived else f'<a class="btn ghost table-button" href="/applications#app-{app["id"]}">管理</a>'
-        rows.append(f'''<tr class="{"archived-row hidden" if archived else ""}" data-archived="{"1" if archived else "0"}" data-search="{escape(_application_search_text(app))}"><td><span class="cell-title">{escape(app["company_name"])}</span><span class="cell-sub">{escape(app["position_name"])}</span></td><td><span class="badge {_status_class(app["current_status"])}">{escape(app["current_status"])}</span><span class="flow-preview">{escape(_flow_preview(app))}</span></td><td>{escape(app.get("city") or "未填")}</td><td>{escape(app.get("application_source") or "未记录")}</td><td class="cell-action">{escape(app.get("next_action") or "—")}</td><td>{escape(_display_time(app.get("status_update_time")))}</td><td>{action}</td></tr>''')
-    body = f'''<section class="panel"><div class="panel-head"><div><h2>投递状态</h2><div class="hint">先看仍需推进的岗位；已终止记录保留在历史档案中。</div></div><div class="board-toolbar"><input id="boardSearch" placeholder="搜索公司、岗位、地点、来源或下一步"><div class="view-switch"><button type="button" class="active" data-view="board">看板</button><button type="button" data-view="table">表格</button></div><button type="button" class="ghost archive-toggle table-only hidden" id="toggleTerminated">显示终止 · {len(terminated_apps)}</button><a class="btn ghost" href="/applications">管理投递</a></div></div><div id="boardView"><div class="board-grid">{''.join(lanes)}</div><details class="archive-shelf" id="boardArchive"><summary><span>已终止岗位 · {len(terminated_apps)}</span><span class="archive-note">历史档案，不参与当前流程</span></summary><div class="archive-card-grid">{archive_cards}</div></details></div><div class="table-wrap hidden" id="tableView"><table class="data-table"><thead><tr><th>公司 / 岗位</th><th>状态</th><th>地点</th><th>来源</th><th>下一步</th><th>状态更新时间</th><th>操作</th></tr></thead><tbody id="boardTableRows">{''.join(rows)}<tr id="boardEmpty" class="hidden"><td colspan="7" class="empty">没有匹配的岗位。</td></tr></tbody></table></div></section><script>const search=document.querySelector('#boardSearch'),board=document.querySelector('#boardView'),table=document.querySelector('#tableView'),archive=document.querySelector('#boardArchive'),toggle=document.querySelector('#toggleTerminated'),switches=document.querySelectorAll('[data-view]');let includeTerminated=false;function setView(view){{localStorage.setItem('rd-board-view',view);board.classList.toggle('hidden',view!=='board');table.classList.toggle('hidden',view!=='table');toggle.classList.toggle('hidden',view!=='table');switches.forEach(b=>b.classList.toggle('active',b.dataset.view===view));applyFilters()}}switches.forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));toggle.addEventListener('click',()=>{{includeTerminated=!includeTerminated;toggle.classList.toggle('active',includeTerminated);toggle.textContent=(includeTerminated?'隐藏终止 · ':'显示终止 · ')+{len(terminated_apps)};applyFilters()}});function applyFilters(){{const q=search.value.toLowerCase();document.querySelectorAll('#boardView .lane-card[data-search]').forEach(card=>card.classList.toggle('hidden',q&&!card.dataset.search.includes(q)));document.querySelectorAll('.lane').forEach(lane=>{{const visible=[...lane.querySelectorAll('.lane-card')].some(card=>!card.classList.contains('hidden'));lane.classList.toggle('hidden',q&&!visible)}});const archivedCards=[...archive.querySelectorAll('.archived-card[data-search]')],archiveMatch=archivedCards.some(card=>!card.classList.contains('hidden'));archive.classList.toggle('hidden',q&&!archiveMatch);if(q&&archiveMatch)archive.open=true;let visibleRows=0;document.querySelectorAll('#boardTableRows tr[data-search]').forEach(row=>{{const show=(!q||row.dataset.search.includes(q))&&(includeTerminated||row.dataset.archived!=='1');row.classList.toggle('hidden',!show);if(show)visibleRows++}});document.querySelector('#boardEmpty').classList.toggle('hidden',visibleRows!==0)}}search.addEventListener('input',applyFilters);setView(localStorage.getItem('rd-board-view')||'board');</script>'''
+        rows.append(f'''<tr class="{"archived-row hidden" if archived else ""}" data-archived="{"1" if archived else "0"}" data-search="{escape(_application_search_text(app))}"><td><span class="cell-title">{escape(app["company_name"])}</span><span class="cell-sub">{escape(app["position_name"])}</span></td><td><span class="badge {_status_class(app["current_status"])}">{escape(app["current_status"])}</span><span class="stage-state">{escape(app.get("stage_state") or "未记录")}</span><span class="flow-preview">{escape(_flow_preview(app))}</span></td><td>{escape(app.get("job_category") or "未分类")}</td><td>{escape(app.get("application_source") or "未记录")}</td><td class="cell-action">{escape(app.get("next_action") or "—")}</td><td>{escape(_display_time(app.get("status_update_time")))}</td><td>{action}</td></tr>''')
+    body = f'''<section class="panel"><div class="panel-head"><div><h2>投递状态</h2><div class="hint">看板列表示当前环节，卡片中的小标签表示该环节的当前情况。</div></div><div class="board-toolbar"><input id="boardSearch" placeholder="搜索公司、岗位、类型、标签、来源或下一步"><div class="view-switch"><button type="button" class="active" data-view="board">看板</button><button type="button" data-view="table">表格</button></div><button type="button" class="ghost archive-toggle table-only hidden" id="toggleTerminated">显示终止 · {len(terminated_apps)}</button><a class="btn ghost" href="/applications">管理投递</a></div></div><div id="boardView"><div class="board-grid">{''.join(lanes)}</div><details class="archive-shelf" id="boardArchive"><summary><span>已终止岗位 · {len(terminated_apps)}</span><span class="archive-note">历史档案，不参与当前流程</span></summary><div class="archive-card-grid">{archive_cards}</div></details></div><div class="table-wrap hidden" id="tableView"><table class="data-table"><thead><tr><th>公司 / 岗位</th><th>环节 / 当前情况</th><th>岗位类型</th><th>来源</th><th>下一步</th><th>状态更新时间</th><th>操作</th></tr></thead><tbody id="boardTableRows">{''.join(rows)}<tr id="boardEmpty" class="hidden"><td colspan="7" class="empty">没有匹配的岗位。</td></tr></tbody></table></div></section><script>const search=document.querySelector('#boardSearch'),board=document.querySelector('#boardView'),table=document.querySelector('#tableView'),archive=document.querySelector('#boardArchive'),toggle=document.querySelector('#toggleTerminated'),switches=document.querySelectorAll('[data-view]');let includeTerminated=false;function setView(view){{localStorage.setItem('rd-board-view',view);board.classList.toggle('hidden',view!=='board');table.classList.toggle('hidden',view!=='table');toggle.classList.toggle('hidden',view!=='table');switches.forEach(b=>b.classList.toggle('active',b.dataset.view===view));applyFilters()}}switches.forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));toggle.addEventListener('click',()=>{{includeTerminated=!includeTerminated;toggle.classList.toggle('active',includeTerminated);toggle.textContent=(includeTerminated?'隐藏终止 · ':'显示终止 · ')+{len(terminated_apps)};applyFilters()}});function applyFilters(){{const q=search.value.toLowerCase();document.querySelectorAll('#boardView .lane-card[data-search]').forEach(card=>card.classList.toggle('hidden',q&&!card.dataset.search.includes(q)));document.querySelectorAll('.lane').forEach(lane=>{{const visible=[...lane.querySelectorAll('.lane-card')].some(card=>!card.classList.contains('hidden'));lane.classList.toggle('hidden',q&&!visible)}});const archivedCards=[...archive.querySelectorAll('.archived-card[data-search]')],archiveMatch=archivedCards.some(card=>!card.classList.contains('hidden'));archive.classList.toggle('hidden',q&&!archiveMatch);if(q&&archiveMatch)archive.open=true;let visibleRows=0;document.querySelectorAll('#boardTableRows tr[data-search]').forEach(row=>{{const show=(!q||row.dataset.search.includes(q))&&(includeTerminated||row.dataset.archived!=='1');row.classList.toggle('hidden',!show);if(show)visibleRows++}});document.querySelector('#boardEmpty').classList.toggle('hidden',visibleRows!==0)}}search.addEventListener('input',applyFilters);setView(localStorage.getItem('rd-board-view')||'board');</script>'''
     return _layout("状态看板", "board", body, port)
 
 
@@ -315,21 +413,29 @@ def _applications_page(port: int) -> str:
     apps = db_manager.get_applications_with_resume()
     active_apps = [app for app in apps if app["current_status"] != "终止"]
     terminated_apps = [app for app in apps if app["current_status"] == "终止"]
-    rows, editors = [], []
+    rows = []
     for app in active_apps:
         app_id, priority = app["id"], int(app.get("priority") or 0)
         resume_name = Path(app.get("file_path") or "").name or "尚未绑定简历"
         resume_link = f'<a href="/resume/{app_id}" target="_blank">查看简历</a>' if _safe_resume_path(app.get("file_path") or "") else ""
         job_link_view = f'<a class="job-link" href="{escape(app.get("job_link") or "")}" target="_blank" rel="noopener noreferrer">打开原岗位页面</a>' if app.get("job_link") else '<span class="hint">未记录岗位链接</span>'
-        rows.append(f'''<tr id="app-{app_id}" data-status="{escape(app["current_status"])}" data-search="{escape(_application_search_text(app))}"><td><span class="cell-title">{escape(app["company_name"])}</span><span class="cell-sub">{escape(app["position_name"])}</span></td><td><span class="badge {_status_class(app["current_status"])}">{escape(app["current_status"])}</span></td><td>{escape(app.get("city") or "未填")}</td><td>{escape(app.get("application_source") or "未记录")}</td><td>{escape(app.get("applied_at") or "未记录")}</td><td>{escape(app.get("application_deadline") or "未设置")}</td><td class="cell-action">{escape(app.get("next_action") or "暂未填写")}<span class="cell-sub">{escape(_display_time(app.get("next_action_due_at")))}</span></td><td>{escape(_display_time(app.get("status_update_time")))}</td><td><button type="button" class="table-button" data-open-app="{app_id}">管理</button></td></tr>''')
-        editors.append(f'''<section class="manage-panel hidden" id="editor-{app_id}"><div class="manage-panel-head"><div><h3>{escape(app["company_name"])} · {escape(app["position_name"])}</h3><div class="hint">状态最后更新：{escape(_display_time(app.get("status_update_time")))}</div></div><button type="button" class="ghost" data-close-editor>收起</button></div>{_flow_details(app)}<form class="manage-form" method="post" action="/application/{app_id}" enctype="multipart/form-data"><input type="hidden" name="previous_status" value="{escape(app["current_status"])}"><label>更新状态<select name="status">{_status_options(app["current_status"])}</select></label><label>优先级<select name="priority">{_priority_options(priority)}</select></label><label>投递日期<input name="applied_at" type="date" value="{escape(app.get("applied_at") or "")}"></label><label>网申截止<input name="application_deadline" type="date" value="{escape(app.get("application_deadline") or "")}"></label><label>最后跟进<input name="last_follow_up_at" type="date" value="{escape(app.get("last_follow_up_at") or "")}"></label><label>下一步时间<input name="next_action_due_at" type="datetime-local" value="{escape((app.get("next_action_due_at") or "").replace(" ", "T")[:16])}"></label><label class="wide">下一步行动<input name="next_action" value="{escape(app.get("next_action") or "")}" placeholder="例如：准备一面"></label><details class="archive"><summary>投递来源与 JD 存档</summary><div class="archive-fields"><label>投递来源<input name="application_source" value="{escape(app.get("application_source") or "")}" placeholder="官网 / 内推 / 牛客 / 招聘群"></label><label>岗位原始链接<input name="job_link" type="url" value="{escape(app.get("job_link") or "")}" placeholder="https://..."></label><div class="full">{job_link_view}</div><label class="full">JD 原文快照<textarea name="jd_text" placeholder="粘贴完整 JD，岗位关闭后仍可复盘">{escape(app.get("jd_text") or "")}</textarea></label></div></details><div class="resume-row field-file"><div><b>关联简历</b><div class="hint">{escape(resume_name)}</div></div>{resume_link}<input type="file" name="resume_file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><span class="hint">选择文件后保存即可绑定或替换</span></div><div class="actions"><button>保存修改</button><button formmethod="post" formaction="/application/{app_id}/delete" class="danger" onclick="return confirm('确认删除这条投递吗？关联简历和附件会移入系统回收站。');">删除投递</button></div></form></section>''')
-    active_rows = "".join(rows) or '<tr><td colspan="9" class="empty">暂无流程中的投递。</td></tr>'
+        tags_html = "".join(
+            f'<span class="tag">{escape(tag.strip())}</span>'
+            for tag in re.split(r"[,，;；]+", app.get("tags") or "") if tag.strip()
+        )
+        main_row = f'''<tr class="application-row" id="app-{app_id}" data-status="{escape(app["current_status"])}" data-category="{escape(app.get("job_category") or "")}" data-search="{escape(_application_search_text(app))}"><td><span class="cell-title">{escape(app["company_name"])}</span><span class="cell-sub">{escape(app["position_name"])}</span></td><td><span class="badge {_status_class(app["current_status"])}">{escape(app["current_status"])}</span><span class="stage-state">{escape(app.get("stage_state") or "未记录")}</span></td><td>{escape(app.get("job_category") or "未分类")}<span class="cell-sub">{tags_html}</span></td><td>{escape(app.get("application_source") or "未记录")}</td><td>{escape(app.get("applied_at") or "未记录")}</td><td class="cell-action">{escape(app.get("next_action") or "暂未填写")}</td><td>{escape(_display_time(app.get("status_update_time")))}</td><td><button type="button" class="table-button" data-open-app="{app_id}">管理</button></td></tr>'''
+        editor_row = f'''<tr class="manage-row hidden" id="editor-{app_id}"><td colspan="8"><section class="manage-panel"><div class="manage-panel-head"><div><h3>{escape(app["company_name"])} · {escape(app["position_name"])}</h3><div class="hint">先更新“当前情况”；只有收到下一环节通知时，才切换“当前环节”。状态最后更新：{escape(_display_time(app.get("status_update_time")))}</div></div><button type="button" class="ghost" data-close-editor>收起</button></div>{_flow_details(app)}<form class="manage-form" method="post" action="/application/{app_id}" enctype="multipart/form-data"><input type="hidden" name="previous_status" value="{escape(app["current_status"])}"><label>当前环节<select name="status">{_status_options(app["current_status"])}</select></label><label>当前情况<select name="stage_state">{_stage_state_options(app.get("stage_state") or "已完成，等待结果")}</select></label><label>岗位类型<input name="job_category" list="jobCategoryPresets" value="{escape(app.get("job_category") or "")}" placeholder="选择或自行输入"></label><label>自定义标签<input name="tags" value="{escape(app.get("tags") or "")}" placeholder="校招, 国企, 重点"></label><label>优先级<select name="priority">{_priority_options(priority)}</select></label><label>投递日期<input name="applied_at" type="date" value="{escape(app.get("applied_at") or "")}"></label><label class="wide">下一步行动<input name="next_action" list="nextActionPresets" value="{escape(app.get("next_action") or "")}" placeholder="选择常用行动或自行输入"></label><details class="optional-fields"><summary>更多时间记录（可选，保留旧数据兼容）</summary><div class="optional-grid"><label>网申截止<input name="application_deadline" type="date" value="{escape(app.get("application_deadline") or "")}"></label><label>最后跟进<input name="last_follow_up_at" type="date" value="{escape(app.get("last_follow_up_at") or "")}"></label><label>下一步时间<input name="next_action_due_at" type="datetime-local" value="{escape((app.get("next_action_due_at") or "").replace(" ", "T")[:16])}"></label></div></details><details class="archive"><summary>投递来源与 JD 存档</summary><div class="archive-fields"><label>投递来源<input name="application_source" value="{escape(app.get("application_source") or "")}" placeholder="官网 / 内推 / 牛客 / 招聘群"></label><label>岗位原始链接<input name="job_link" type="url" value="{escape(app.get("job_link") or "")}" placeholder="https://..."></label><div class="full">{job_link_view}</div><label class="full">JD 原文快照<textarea name="jd_text" placeholder="粘贴完整 JD，岗位关闭后仍可复盘">{escape(app.get("jd_text") or "")}</textarea></label></div></details><div class="resume-row field-file"><div><b>关联简历</b><div class="hint">{escape(resume_name)}</div></div>{resume_link}<input type="file" name="resume_file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><span class="hint">选择文件后保存即可绑定或替换</span></div><div class="actions"><button>保存修改</button><button formmethod="post" formaction="/application/{app_id}/delete" class="danger" onclick="return confirm('确认删除这条投递吗？关联简历和附件会移入系统回收站。');">删除投递</button></div></form></section></td></tr>'''
+        rows.extend([main_row, editor_row])
+    active_rows = "".join(rows) or '<tr><td colspan="8" class="empty">暂无流程中的投递。</td></tr>'
     archive_rows = "".join(f'''<tr><td><span class="cell-title">{escape(app["company_name"])}</span><span class="cell-sub">{escape(app["position_name"])}</span></td><td>{escape(app.get("application_source") or "未记录")}</td><td><span class="flow-preview">{escape(_termination_hint(app))}</span>{_flow_details(app, compact=True)}</td><td>{escape(_display_time(app.get("status_update_time")))}</td><td><form method="post" action="/application/{app['id']}/reopen"><button class="ghost table-button">恢复跟踪</button></form></td></tr>''' for app in terminated_apps) or '<tr><td colspan="5" class="empty">暂无终止岗位。</td></tr>'
     active_statuses = [status for status in db_manager.APPLICATION_STATUSES if status != "终止"]
     status_counts = {status: sum(app["current_status"] == status for app in active_apps) for status in active_statuses}
     filter_html = '<button type="button" class="filter-chip active" data-status="">全部 · %d</button>' % len(active_apps) + "".join(f'<button type="button" class="filter-chip" data-status="{escape(status)}">{escape(status)} · {status_counts[status]}</button>' for status in active_statuses)
-    body = f'''<section class="panel"><details class="create-panel"><summary>＋ 新增投递</summary><div class="hint" style="margin:8px 0 16px">保存关键日期、来源、链接和 JD 快照，即使岗位关闭也能复盘。</div><form class="add-form" method="post" action="/application" enctype="multipart/form-data"><label>公司名称<input required name="company_name" placeholder="例如：字节跳动"></label><label>岗位名称<input required name="position_name" placeholder="例如：后端开发工程师"></label><label>工作地点<input name="city" placeholder="北京"></label><label>当前状态<select name="status">{_status_options()}</select></label><label>优先级<select name="priority">{_priority_options()}</select></label><label>投递日期<input name="applied_at" type="date" value="{date.today().isoformat()}"></label><label>网申截止<input name="application_deadline" type="date"></label><label>下一步时间<input name="next_action_due_at" type="datetime-local"></label><label>最后跟进<input name="last_follow_up_at" type="date"></label><label class="wide">下一步行动<input name="next_action" placeholder="例如：完成网申、准备笔试"></label><label>投递来源<input name="application_source" placeholder="官网 / 内推 / 牛客"></label><label class="wide">岗位原始链接<input name="job_link" type="url" placeholder="https://..."></label><label class="full">JD 原文快照<textarea name="jd_text" placeholder="粘贴完整岗位描述，便于后期复盘"></textarea></label><label class="file field-file">关联本地简历（可选）<input type="file" name="resume_file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"></label><button>添加投递</button></form></details></section>
-    <section class="panel"><div class="panel-head"><div><h2>投递管理</h2><div class="hint">终止岗位已移出主列表；点击“管理”时只展开一条记录。</div></div><div class="toolbar"><input id="search" placeholder="搜索公司、岗位、地点、来源、日期或 JD"><span class="results-summary" id="resultsSummary"></span></div></div><div class="filter-chips">{filter_html}</div><div class="table-wrap"><table class="data-table"><thead><tr><th>公司 / 岗位</th><th>状态</th><th>地点</th><th>来源</th><th>投递日期</th><th>网申截止</th><th>下一步</th><th>状态更新时间</th><th>操作</th></tr></thead><tbody id="applicationRows">{active_rows}</tbody></table></div>{''.join(editors)}<details class="archive-list"><summary>已终止岗位 · {len(terminated_apps)}</summary><div class="table-wrap"><table class="data-table"><thead><tr><th>公司 / 岗位</th><th>来源</th><th>流转详情</th><th>终止时间</th><th>操作</th></tr></thead><tbody>{archive_rows}</tbody></table></div></details></section><script>const search=document.querySelector('#search'),summary=document.querySelector('#resultsSummary');let selectedStatus='';function applyFilters(){{const q=search.value.toLowerCase();let visible=0;document.querySelectorAll('#applicationRows tr[data-search]').forEach(row=>{{const show=(!q||row.dataset.search.includes(q))&&(!selectedStatus||row.dataset.status===selectedStatus);row.classList.toggle('hidden',!show);if(show)visible++}});summary.textContent='显示 '+visible+' 条'}}search.addEventListener('input',applyFilters);document.querySelectorAll('.filter-chip').forEach(button=>button.addEventListener('click',()=>{{document.querySelectorAll('.filter-chip').forEach(item=>item.classList.remove('active'));button.classList.add('active');selectedStatus=button.dataset.status;applyFilters()}}));function closeEditors(){{document.querySelectorAll('.manage-panel').forEach(panel=>panel.classList.add('hidden'))}}document.querySelectorAll('[data-open-app]').forEach(button=>button.addEventListener('click',()=>{{closeEditors();const panel=document.querySelector('#editor-'+button.dataset.openApp);if(panel){{panel.classList.remove('hidden');panel.scrollIntoView({{behavior:'smooth',block:'center'}})}}}}));document.querySelectorAll('[data-close-editor]').forEach(button=>button.addEventListener('click',closeEditors));const hash=location.hash.match(/^#app-(\\d+)$/);if(hash){{const button=document.querySelector('[data-open-app="'+hash[1]+'"]');if(button)button.click()}}applyFilters();</script>'''
+    categories = sorted({app.get("job_category") for app in active_apps if app.get("job_category")})
+    category_options = '<option value="">全部岗位类型</option>' + "".join(f'<option value="{escape(item)}">{escape(item)}</option>' for item in categories)
+    helpers = _datalist("nextActionPresets", NEXT_ACTION_PRESETS) + _datalist("jobCategoryPresets", JOB_CATEGORY_PRESETS)
+    body = f'''{helpers}<section class="panel"><details class="create-panel"><summary>＋ 新增投递</summary><div class="hint" style="margin:8px 0 16px">新增后默认进入“已投递 · 已完成，等待结果”；投递日期默认为今天，仍可手动调整。</div><form class="add-form" method="post" action="/application" enctype="multipart/form-data"><input type="hidden" name="status" value="已投递"><input type="hidden" name="stage_state" value="已完成，等待结果"><label>公司名称<input required name="company_name" placeholder="例如：字节跳动"></label><label>岗位名称<input required name="position_name" placeholder="例如：后端开发工程师"></label><label>工作地点<input name="city" placeholder="北京"></label><label>岗位类型<input name="job_category" list="jobCategoryPresets" placeholder="研发 / 供应链 / 自定义"></label><label>优先级<select name="priority">{_priority_options()}</select></label><label>投递日期<input name="applied_at" type="date" value="{date.today().isoformat()}"></label><label class="wide">自定义标签<input name="tags" placeholder="校招, 国企, 重点（逗号分隔）"></label><label class="wide">下一步行动<input name="next_action" list="nextActionPresets" value="等待结果"></label><label>投递来源<input name="application_source" placeholder="官网 / 内推 / 牛客"></label><label class="wide">岗位原始链接<input name="job_link" type="url" placeholder="https://..."></label><details class="optional-fields"><summary>更多时间记录（可选）</summary><div class="optional-grid"><label>网申截止<input name="application_deadline" type="date"></label><label>最后跟进<input name="last_follow_up_at" type="date"></label><label>下一步时间<input name="next_action_due_at" type="datetime-local"></label></div></details><label class="full">JD 原文快照<textarea name="jd_text" placeholder="粘贴完整岗位描述，便于后期复盘"></textarea></label><label class="file field-file">关联本地简历（可选）<input type="file" name="resume_file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"></label><button>添加投递</button></form></details></section>
+    <section class="panel"><div class="panel-head"><div><h2>投递管理</h2><div class="hint">点击“管理”后会在当前岗位下方原位展开；终止岗位保留在折叠档案中。</div></div><div class="toolbar"><input id="search" placeholder="搜索公司、岗位、类型、标签、来源或 JD"><select class="filter-select" id="categoryFilter">{category_options}</select><span class="results-summary" id="resultsSummary"></span></div></div><div class="filter-chips">{filter_html}</div><div class="table-wrap"><table class="data-table"><thead><tr><th>公司 / 岗位</th><th>当前环节 / 情况</th><th>类型 / 标签</th><th>来源</th><th>投递日期</th><th>下一步</th><th>状态更新时间</th><th>操作</th></tr></thead><tbody id="applicationRows">{active_rows}</tbody></table></div><details class="archive-list"><summary>已终止岗位 · {len(terminated_apps)}</summary><div class="table-wrap"><table class="data-table"><thead><tr><th>公司 / 岗位</th><th>来源</th><th>流转详情</th><th>终止时间</th><th>操作</th></tr></thead><tbody>{archive_rows}</tbody></table></div></details></section><script>const search=document.querySelector('#search'),category=document.querySelector('#categoryFilter'),summary=document.querySelector('#resultsSummary');let selectedStatus='';function closeEditors(){{document.querySelectorAll('.manage-row').forEach(row=>row.classList.add('hidden'))}}function applyFilters(){{const q=search.value.toLowerCase(),selectedCategory=category.value;let visible=0;document.querySelectorAll('#applicationRows .application-row').forEach(row=>{{const show=(!q||row.dataset.search.includes(q))&&(!selectedStatus||row.dataset.status===selectedStatus)&&(!selectedCategory||row.dataset.category===selectedCategory);row.classList.toggle('hidden',!show);const editor=document.querySelector('#editor-'+row.id.replace('app-',''));if(editor&&!show)editor.classList.add('hidden');if(show)visible++}});summary.textContent='显示 '+visible+' 条'}}search.addEventListener('input',applyFilters);category.addEventListener('change',applyFilters);document.querySelectorAll('.filter-chip').forEach(button=>button.addEventListener('click',()=>{{document.querySelectorAll('.filter-chip').forEach(item=>item.classList.remove('active'));button.classList.add('active');selectedStatus=button.dataset.status;applyFilters()}}));document.querySelectorAll('[data-open-app]').forEach(button=>button.addEventListener('click',()=>{{const panel=document.querySelector('#editor-'+button.dataset.openApp),wasOpen=panel&&!panel.classList.contains('hidden');closeEditors();if(panel&&!wasOpen)panel.classList.remove('hidden')}}));document.querySelectorAll('[data-close-editor]').forEach(button=>button.addEventListener('click',closeEditors));document.querySelectorAll('.manage-form').forEach(form=>{{const stage=form.querySelector('select[name="status"]'),state=form.querySelector('select[name="stage_state"]');stage.addEventListener('change',()=>{{state.value=['Offer','终止'].includes(stage.value)?'已完成':'待处理'}})}});const hash=location.hash.match(/^#app-(\\d+)$/);if(hash){{const button=document.querySelector('[data-open-app="'+hash[1]+'"]');if(button)button.click()}}applyFilters();</script>'''
     return _layout("投递管理", "applications", body, port)
 
 
@@ -409,13 +515,74 @@ def _resumes_page(port: int) -> str:
             state = '<span class="resume-state missing">未绑定</span>'
             action = '<span class="archive-note">无需处理</span>' if archived else '<a class="btn ghost table-button" href="/applications#app-%s">去绑定</a>' % app["id"]
         filename = Path(file_path).name if file_path else "—"
-        return f'''<tr data-search="{escape(_application_search_text(app)+' '+filename.lower())}"><td><span class="cell-title">{escape(app["company_name"])}</span><span class="cell-sub">{escape(app["position_name"])}</span></td><td>{escape(filename)}</td><td>{state}</td><td><span class="badge {_status_class(app["current_status"])}">{escape(app["current_status"])}</span></td><td>{escape(_display_time(app.get("upload_time")))}</td><td>{escape(_display_time(app.get("status_update_time")))}</td><td>{action}</td></tr>'''
+        tags = " · ".join(tag.strip() for tag in re.split(r"[,，;；]+", app.get("tags") or "") if tag.strip())
+        return f'''<tr data-category="{escape(app.get("job_category") or "")}" data-search="{escape(_application_search_text(app)+' '+filename.lower())}"><td><span class="cell-title">{escape(app["company_name"])}</span><span class="cell-sub">{escape(app["position_name"])}</span></td><td>{escape(filename)}</td><td>{state}</td><td>{escape(app.get("job_category") or "未分类")}<span class="cell-sub">{escape(tags)}</span></td><td><span class="badge {_status_class(app["current_status"])}">{escape(app["current_status"])}</span></td><td>{escape(_display_time(app.get("upload_time")))}</td><td>{escape(_display_time(app.get("status_update_time")))}</td><td>{action}</td></tr>'''
 
-    current_rows = "".join(build_row(app) for app in current_apps) or '<tr><td colspan="7" class="empty">暂无当前投递记录。</td></tr>'
-    historical_rows = "".join(build_row(app, archived=True) for app in historical_apps) or '<tr><td colspan="7" class="empty">暂无历史关联简历。</td></tr>'
+    current_rows = "".join(build_row(app) for app in current_apps) or '<tr><td colspan="8" class="empty">暂无当前投递记录。</td></tr>'
+    historical_rows = "".join(build_row(app, archived=True) for app in historical_apps) or '<tr><td colspan="8" class="empty">暂无历史关联简历。</td></tr>'
     current_bound = sum(bool(_safe_resume_path(app.get("file_path") or "")) for app in current_apps)
-    body = f'''<section class="stats"><div class="stat primary"><span>当前投递</span><b>{len(current_apps)}</b></div><div class="stat"><span>当前已关联</span><b>{current_bound}</b></div><div class="stat"><span>当前待绑定 / 缺失</span><b>{len(current_apps)-current_bound}</b></div><div class="stat"><span>历史记录</span><b>{len(historical_apps)}</b></div></section><section class="panel"><div class="panel-head"><div><h2>关联简历汇总</h2><div class="hint">优先检查仍在推进的岗位；终止岗位使用过的简历保留在历史区。</div></div><div class="toolbar"><input id="resumeSearch" placeholder="搜索公司、岗位或文件名"><span class="results-summary" id="resumeSummary"></span></div></div><div class="table-section-title"><div><h3>当前投递关联简历</h3><div class="hint">{len(current_apps)} 条需要继续关注的投递</div></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>公司 / 岗位</th><th>简历文件</th><th>文件状态</th><th>投递状态</th><th>记录时间</th><th>状态更新时间</th><th>操作</th></tr></thead><tbody id="currentResumeRows">{current_rows}</tbody></table></div><details class="archive-shelf" id="resumeArchive"><summary><span>历史关联简历 · {len(historical_apps)}</span><span class="archive-note">来自已终止岗位，保留用于版本复盘</span></summary><div class="table-wrap" style="border:0;border-radius:0 0 12px 12px"><table class="data-table"><thead><tr><th>公司 / 岗位</th><th>简历文件</th><th>文件状态</th><th>投递状态</th><th>记录时间</th><th>状态更新时间</th><th>操作</th></tr></thead><tbody id="historicalResumeRows">{historical_rows}</tbody></table></div></details></section><script>const resumeSearch=document.querySelector('#resumeSearch'),summary=document.querySelector('#resumeSummary'),resumeArchive=document.querySelector('#resumeArchive');function filterResumes(){{const q=resumeSearch.value.toLowerCase();let current=0,history=0;document.querySelectorAll('#currentResumeRows tr[data-search]').forEach(row=>{{const show=!q||row.dataset.search.includes(q);row.classList.toggle('hidden',!show);if(show)current++}});document.querySelectorAll('#historicalResumeRows tr[data-search]').forEach(row=>{{const show=!q||row.dataset.search.includes(q);row.classList.toggle('hidden',!show);if(show)history++}});resumeArchive.classList.toggle('hidden',q&&history===0);if(q&&history)resumeArchive.open=true;summary.textContent='当前 '+current+' · 历史 '+history}}resumeSearch.addEventListener('input',filterResumes);filterResumes();</script>'''
+    categories = sorted({app.get("job_category") for app in apps if app.get("job_category")})
+    category_options = '<option value="">全部岗位类型</option>' + "".join(f'<option value="{escape(item)}">{escape(item)}</option>' for item in categories)
+    body = f'''<section class="stats"><div class="stat primary"><span>当前投递</span><b>{len(current_apps)}</b></div><div class="stat"><span>当前已关联</span><b>{current_bound}</b></div><div class="stat"><span>当前待绑定 / 缺失</span><b>{len(current_apps)-current_bound}</b></div><div class="stat"><span>历史记录</span><b>{len(historical_apps)}</b></div></section><section class="panel"><div class="panel-head"><div><h2>关联简历汇总</h2><div class="hint">可按岗位类型筛选，也可直接搜索自定义标签。</div></div><div class="toolbar"><input id="resumeSearch" placeholder="搜索公司、岗位、标签或文件名"><select class="filter-select" id="resumeCategory">{category_options}</select><span class="results-summary" id="resumeSummary"></span></div></div><div class="table-section-title"><div><h3>当前投递关联简历</h3><div class="hint">{len(current_apps)} 条需要继续关注的投递</div></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>公司 / 岗位</th><th>简历文件</th><th>文件状态</th><th>类型 / 标签</th><th>投递状态</th><th>记录时间</th><th>状态更新时间</th><th>操作</th></tr></thead><tbody id="currentResumeRows">{current_rows}</tbody></table></div><details class="archive-shelf" id="resumeArchive"><summary><span>历史关联简历 · {len(historical_apps)}</span><span class="archive-note">来自已终止岗位，保留用于版本复盘</span></summary><div class="table-wrap" style="border:0;border-radius:0 0 12px 12px"><table class="data-table"><thead><tr><th>公司 / 岗位</th><th>简历文件</th><th>文件状态</th><th>类型 / 标签</th><th>投递状态</th><th>记录时间</th><th>状态更新时间</th><th>操作</th></tr></thead><tbody id="historicalResumeRows">{historical_rows}</tbody></table></div></details></section><script>const resumeSearch=document.querySelector('#resumeSearch'),category=document.querySelector('#resumeCategory'),summary=document.querySelector('#resumeSummary'),resumeArchive=document.querySelector('#resumeArchive');function filterResumes(){{const q=resumeSearch.value.toLowerCase(),selectedCategory=category.value;let current=0,history=0;document.querySelectorAll('#currentResumeRows tr[data-search]').forEach(row=>{{const show=(!q||row.dataset.search.includes(q))&&(!selectedCategory||row.dataset.category===selectedCategory);row.classList.toggle('hidden',!show);if(show)current++}});document.querySelectorAll('#historicalResumeRows tr[data-search]').forEach(row=>{{const show=(!q||row.dataset.search.includes(q))&&(!selectedCategory||row.dataset.category===selectedCategory);row.classList.toggle('hidden',!show);if(show)history++}});resumeArchive.classList.toggle('hidden',(q||selectedCategory)&&history===0);if((q||selectedCategory)&&history)resumeArchive.open=true;summary.textContent='当前 '+current+' · 历史 '+history}}resumeSearch.addEventListener('input',filterResumes);category.addEventListener('change',filterResumes);filterResumes();</script>'''
     return _layout("简历汇总", "resumes", body, port)
+
+
+def _settings_page(port: int) -> str:
+    workspace = config_manager.get_workspace_preferences()
+    backup = data_safety.automatic_backup_status()
+    last_backup = (
+        backup["last_at"].astimezone().strftime("%Y-%m-%d %H:%M")
+        if backup["last_at"] else "尚未执行自动备份"
+    )
+    backup_count = len(data_safety.list_backups())
+    interval_options = "".join(
+        f'<option value="{days}" {"selected" if days == backup["interval_days"] else ""}>{days} 天</option>'
+        for days in (1, 3, 7, 14, 30)
+    )
+    developer = escape(branding.DEVELOPER_NAME)
+    email = escape(branding.CONTACT_EMAIL)
+    project_url = escape(branding.PROJECT_URL, quote=True)
+    issues_url = escape(branding.ISSUES_URL, quote=True)
+    body = f'''
+    <section class="panel">
+      <div class="panel-head"><div><h2>工作台设置</h2><div class="hint">个人设置保存在本地数据目录，不会写入 Git 仓库。</div></div></div>
+      <div class="settings-grid">
+        <article class="settings-card">
+          <h3>显示设置</h3>
+          <form method="post" action="/settings/workspace">
+            <label>工作台标题<input name="workspace_title" value="{escape(workspace["title"])}" placeholder="秋招工作台"></label>
+            <div class="field-note">标题仅影响你本机的网页工作台；开发者与项目地址属于软件信息，不随个人配置改变。</div>
+            <button>保存显示设置</button>
+          </form>
+        </article>
+        <article class="settings-card about-card">
+          <h3>关于 Resume Detective</h3>
+          <div class="about-list">
+            <div class="about-line"><span class="about-label">开发者</span><strong>{developer}</strong></div>
+            <div class="about-line"><span class="about-label">联系邮箱</span><a href="mailto:{email}">{email}</a></div>
+            <div class="about-line"><span class="about-label">开源地址</span><a href="{project_url}" target="_blank" rel="noreferrer">Suryxin-xx/ResumeDetective</a></div>
+          </div>
+          <div class="about-actions"><a href="{project_url}" target="_blank" rel="noreferrer">查看 GitHub</a><a href="{issues_url}" target="_blank" rel="noreferrer">反馈问题</a></div>
+        </article>
+        <article class="settings-card">
+          <h3>自动备份</h3>
+          <form method="post" action="/settings/backup">
+            <label class="setting-row"><input type="checkbox" name="automatic_backup_enabled" value="1" {"checked" if backup["enabled"] else ""}><span>启用自动定期备份</span></label>
+            <label>备份间隔<select name="backup_interval_days">{interval_options}</select></label>
+            <div class="backup-status">上次自动备份：{escape(last_backup)}<br>现有备份：{backup_count} 份<br>保存位置：{escape(str(data_safety.BACKUP_ROOT))}</div>
+            <button>保存备份设置</button>
+          </form>
+          <form method="post" action="/settings/backup-now" style="margin-top:10px"><button class="ghost">立即建立手动备份</button></form>
+          <div class="field-note" style="margin-top:10px">自动备份默认关闭；不会自动删除旧备份。数据库升级前仍会强制建立安全备份。</div>
+        </article>
+        <article class="settings-card">
+          <h3>数据兼容与迁移</h3>
+          <p class="hint">数据库使用版本化增量迁移，升级前会先备份。旧版时间字段和流程历史会继续保留，不会因界面精简而删除。</p>
+          <p class="hint">完整 Excel 导入、导出和备份恢复可在桌面版“工具”页面操作。</p>
+        </article>
+      </div>
+    </section>'''
+    return _layout("设置", "settings", body, port)
 
 
 def _resume_response(handler: BaseHTTPRequestHandler, app_id: int, *, send_body=True):
@@ -558,6 +725,8 @@ class _Handler(BaseHTTPRequestHandler):
             body = _interviews_page(_server_port)
         elif path == "/resumes":
             body = _resumes_page(_server_port)
+        elif path == "/settings":
+            body = _settings_page(_server_port)
         else:
             self._send_problem(404, "页面不存在"); return
         encoded = body.encode("utf-8")
@@ -593,6 +762,8 @@ class _Handler(BaseHTTPRequestHandler):
                     jd_text=data.get("jd_text", "").strip(),
                     application_source=data.get("application_source", "").strip(),
                     job_link=data.get("job_link", "").strip(),
+                    job_category=data.get("job_category", "").strip(),
+                    tags=data.get("tags", "").strip(),
                 )
                 app_id = db_manager.add_application(
                     resume_id,
@@ -603,6 +774,7 @@ class _Handler(BaseHTTPRequestHandler):
                     next_action=data.get("next_action", "").strip(),
                     next_action_due_at=data.get("next_action_due_at", "").strip(),
                     last_follow_up_at=data.get("last_follow_up_at", "").strip(),
+                    stage_state=data.get("stage_state", "已完成，等待结果"),
                 )
                 db_manager.update_resume_details(resume_id, city=data.get("city", "").strip())
             elif path.endswith("/delete") and path.startswith("/application/"):
@@ -615,7 +787,10 @@ class _Handler(BaseHTTPRequestHandler):
             elif path.startswith("/application/"):
                 app_id = int(path.rsplit("/", 1)[1])
                 status, previous = data.get("status", ""), data.get("previous_status", "")
-                if status != previous and status in db_manager.APPLICATION_STATUSES: db_manager.update_application_status(app_id, status)
+                stage_state = data.get("stage_state", "")
+                if status != previous and status in db_manager.APPLICATION_STATUSES:
+                    stage_state = "已完成" if status in ("Offer", "终止") else "待处理"
+                    db_manager.update_application_status(app_id, status, stage_state)
                 db_manager.update_application_details(
                     app_id,
                     next_action=data.get("next_action", "").strip(),
@@ -624,6 +799,7 @@ class _Handler(BaseHTTPRequestHandler):
                     application_deadline=data.get("application_deadline", "").strip(),
                     next_action_due_at=data.get("next_action_due_at", "").strip(),
                     last_follow_up_at=data.get("last_follow_up_at", "").strip(),
+                    stage_state=stage_state if status == previous else None,
                 )
                 app = _find_application(app_id)
                 if app:
@@ -631,10 +807,22 @@ class _Handler(BaseHTTPRequestHandler):
                         "application_source": data.get("application_source", "").strip(),
                         "job_link": data.get("job_link", "").strip(),
                         "jd_text": data.get("jd_text", "").strip(),
+                        "job_category": data.get("job_category", "").strip(),
+                        "tags": data.get("tags", "").strip(),
                     }
                     if files.get("resume_file"):
                         update_fields["file_path"] = _save_resume_upload(files["resume_file"], app["company_name"], app["position_name"])
                     db_manager.update_resume_details(app["resume_id"], **update_fields)
+            elif path == "/settings/workspace":
+                config_manager.set_workspace_preferences(data.get("workspace_title", ""))
+            elif path == "/settings/backup":
+                config_manager.set_backup_preferences(
+                    enabled=data.get("automatic_backup_enabled") == "1",
+                    interval_days=int(data.get("backup_interval_days", 7)),
+                )
+                data_safety.maybe_create_automatic_backup()
+            elif path == "/settings/backup-now":
+                data_safety.create_backup("manual-gateway")
             elif path == "/interview":
                 app_id = int(data["application_id"])
                 follow_up = data.get("follow_up", "").strip()
@@ -677,6 +865,7 @@ class _Handler(BaseHTTPRequestHandler):
         destination = (
             "/applications" if path.startswith("/application")
             else "/tasks" if path.startswith("/task")
+            else "/settings" if path.startswith("/settings")
             else "/interviews"
         )
         self.send_header("Location", destination)
@@ -695,6 +884,7 @@ def start_gateway(port=None) -> str:
         _server_port = int(_server.server_port)
         _control_token = secrets.token_urlsafe(24)
         Thread(target=_server.serve_forever, name="ResumeDetectiveGateway", daemon=True).start()
+        _schedule_automatic_backup_check()
         if _address_handler is not None:
             _address_handler(get_url(_server_port))
     return get_url(_server_port)
@@ -715,7 +905,10 @@ def restart_gateway(port: int | None = None, *, force: bool = False) -> str:
 
 
 def stop_gateway():
-    global _server, _server_port, _control_token
+    global _server, _server_port, _control_token, _backup_timer
+    if _backup_timer is not None:
+        _backup_timer.cancel()
+        _backup_timer = None
     if _server is not None:
         _server.shutdown(); _server.server_close(); _server = None; _server_port = None
     _control_token = None

@@ -2,6 +2,7 @@
 
 import sys
 import time
+import os
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -49,8 +50,8 @@ if not db_manager.get_applications_with_resume():
         application_source="内推",
     )
     archived_app = db_manager.add_application(archived_resume, "已投递", 2)
-    db_manager.update_application_status(archived_app, "简历初筛")
+    db_manager.update_application_status(archived_app, "简历筛选", "已完成，等待结果")
     db_manager.update_application_status(archived_app, "终止")
-local_gateway.start_gateway(18765)
+local_gateway.start_gateway(int(os.environ.get("QA_GATEWAY_PORT", "18765")))
 while True:
     time.sleep(1)

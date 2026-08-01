@@ -83,14 +83,15 @@ VSVersionInfo(
       StringTable(
         '080404B0',
         [
-          StringStruct('CompanyName', 'Resume Detective Open Source Project'),
+          StringStruct('CompanyName', 'Suryxin-xx'),
           StringStruct('FileDescription', 'Resume Detective - Local-first job application manager'),
           StringStruct('FileVersion', '$version'),
           StringStruct('InternalName', 'ResumeDetective'),
-          StringStruct('LegalCopyright', 'Copyright (c) Resume Detective contributors'),
+          StringStruct('LegalCopyright', 'Copyright (c) 2026 Suryxin-xx'),
           StringStruct('OriginalFilename', 'ResumeDetective.exe'),
           StringStruct('ProductName', 'Resume Detective'),
-          StringStruct('ProductVersion', '$version')
+          StringStruct('ProductVersion', '$version'),
+          StringStruct('Comments', 'https://github.com/Suryxin-xx/ResumeDetective')
         ]
       )
     ]),
@@ -142,8 +143,16 @@ if (-not $releaseFull.Equals($expectedReleaseFull, [StringComparison]::OrdinalIg
 
 Write-Host "Preparing clean release workspace..."
 
-& $python -B -m unittest discover -s (Join-Path $projectRoot "tests") -p "test_*.py" -v
-if ($LASTEXITCODE -ne 0) {
+# 从项目根目录运行测试，确保 main、db_manager 等顶层模块可被导入。
+$testExitCode = 1
+Push-Location $projectRoot
+try {
+    & $python -B -m unittest discover -s "tests" -p "test_*.py" -v
+    $testExitCode = $LASTEXITCODE
+} finally {
+    Pop-Location
+}
+if ($testExitCode -ne 0) {
     throw "Automated tests failed. Refusing to build."
 }
 
@@ -165,6 +174,7 @@ if (Test-Path $stageRoot) {
 New-Item -ItemType Directory -Path $stageRoot | Out-Null
 
 $includeFiles = @(
+    "branding.py",
     "main.py",
     "gateway_main.py",
     "local_gateway.py",

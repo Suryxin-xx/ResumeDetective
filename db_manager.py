@@ -10,8 +10,12 @@ from pathlib import Path
 import file_ops
 from paths import DB_FILE, DATA_DIR
 
-APPLICATION_STATUSES = ["已投递", "简历初筛", "笔试/无笔试", "业务面试", "HR面", "Offer", "终止"]
-CURRENT_SCHEMA_VERSION = 5
+APPLICATION_STATUSES = [
+    "已投递", "简历筛选", "测评", "AI 面试", "笔试",
+    "业务面试", "HR 面", "Offer", "终止",
+]
+APPLICATION_STAGE_STATES = ["待处理", "已安排", "已完成，等待结果", "已完成"]
+CURRENT_SCHEMA_VERSION = 6
 
 
 def utc_timestamp_to_local(value) -> str:
@@ -39,6 +43,8 @@ CREATE TABLE IF NOT EXISTS resumes (
     city TEXT DEFAULT '',
     application_source TEXT DEFAULT '',
     job_link TEXT DEFAULT '',
+    job_category TEXT DEFAULT '',
+    tags TEXT DEFAULT '',
     jd_text TEXT,
     upload_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     version_note TEXT
@@ -47,8 +53,8 @@ CREATE TABLE IF NOT EXISTS resumes (
 CREATE TABLE IF NOT EXISTS applications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     resume_id INTEGER NOT NULL,
-    current_status TEXT NOT NULL
-        CHECK (current_status IN ('已投递','简历初筛','笔试/无笔试','业务面试','HR面','Offer','终止')),
+    current_status TEXT NOT NULL,
+    stage_state TEXT NOT NULL DEFAULT '已完成，等待结果',
     priority INTEGER DEFAULT 0,
     sort_order INTEGER DEFAULT 0,
     status_update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -189,6 +195,60 @@ def init_db():
     conn = get_connection()
     try:
         conn.executescript(DDL_STATEMENTS)
+        application_sql = (
+            conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='applications'"
+            ).fetchone()["sql"]
+            or ""
+        )
+        if "CHECK (current_status" in application_sql:
+            # v6 起状态可继续扩展，移除旧版写死在表结构里的 CHECK 约束。
+            # 迁移前已建立完整备份；关闭外键期间只重建 applications 本表。
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.executescript(
+                """
+                CREATE TABLE applications_v6 (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    resume_id INTEGER NOT NULL,
+                    current_status TEXT NOT NULL,
+                    stage_state TEXT NOT NULL DEFAULT '已完成，等待结果',
+                    priority INTEGER DEFAULT 0,
+                    sort_order INTEGER DEFAULT 0,
+                    status_update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    interview_feedback TEXT,
+                    next_action TEXT,
+                    applied_at TEXT DEFAULT '',
+                    application_deadline TEXT DEFAULT '',
+                    next_action_due_at TEXT DEFAULT '',
+                    last_follow_up_at TEXT DEFAULT '',
+                    status_history TEXT DEFAULT '',
+                    FOREIGN KEY (resume_id) REFERENCES resumes(id) ON DELETE CASCADE
+                );
+                INSERT INTO applications_v6 (
+                    id, resume_id, current_status, stage_state, priority, sort_order,
+                    status_update_time, interview_feedback, next_action, applied_at,
+                    application_deadline, next_action_due_at, last_follow_up_at, status_history
+                )
+                SELECT
+                    id, resume_id,
+                    CASE current_status
+                        WHEN '简历初筛' THEN '简历筛选'
+                        WHEN '笔试/无笔试' THEN '笔试'
+                        WHEN 'HR面' THEN 'HR 面'
+                        ELSE current_status
+                    END,
+                    CASE WHEN current_status IN ('Offer', '终止') THEN '已完成'
+                         ELSE '已完成，等待结果' END,
+                    priority, sort_order, status_update_time, interview_feedback,
+                    next_action, applied_at, application_deadline, next_action_due_at,
+                    last_follow_up_at, status_history
+                FROM applications;
+                DROP TABLE applications;
+                ALTER TABLE applications_v6 RENAME TO applications;
+                """
+            )
+            conn.execute("PRAGMA foreign_keys = ON")
         required_columns = {
             "applications": [
                 ("status_history", "TEXT DEFAULT ''"),
@@ -198,11 +258,14 @@ def init_db():
                 ("application_deadline", "TEXT DEFAULT ''"),
                 ("next_action_due_at", "TEXT DEFAULT ''"),
                 ("last_follow_up_at", "TEXT DEFAULT ''"),
+                ("stage_state", "TEXT NOT NULL DEFAULT '已完成，等待结果'"),
             ],
             "resumes": [
                 ("city", "TEXT DEFAULT ''"),
                 ("application_source", "TEXT DEFAULT ''"),
                 ("job_link", "TEXT DEFAULT ''"),
+                ("job_category", "TEXT DEFAULT ''"),
+                ("tags", "TEXT DEFAULT ''"),
             ],
             "materials": [
                 ("start_time", "TEXT DEFAULT ''"),
@@ -232,6 +295,9 @@ def init_db():
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {declaration}")
         conn.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION}")
         conn.commit()
+        foreign_key_issues = conn.execute("PRAGMA foreign_key_check").fetchall()
+        if foreign_key_issues:
+            raise RuntimeError(f"数据库迁移后外键检查失败：{len(foreign_key_issues)} 项")
         result = conn.execute("PRAGMA quick_check").fetchone()[0]
         if result != "ok":
             raise RuntimeError(f"数据库迁移后检查失败：{result}")
@@ -245,14 +311,18 @@ def init_db():
 # ─── Resume CRUD ───────────────────────────────────────────
 
 def add_resume(company_name, position_name, file_path, jd_text="", version_note="",
-               application_source="", job_link=""):
+               application_source="", job_link="", job_category="", tags=""):
     """新增简历，返回新纪录的 id"""
     conn = get_connection()
     try:
         cur = conn.execute(
-            "INSERT INTO resumes (company_name, position_name, file_path, jd_text, version_note, application_source, job_link) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (company_name, position_name, file_path, jd_text, version_note, application_source, job_link),
+            "INSERT INTO resumes (company_name, position_name, file_path, jd_text, version_note, "
+            "application_source, job_link, job_category, tags) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                company_name, position_name, file_path, jd_text, version_note,
+                application_source, job_link, job_category, tags,
+            ),
         )
         conn.commit()
         return cur.lastrowid
@@ -304,6 +374,7 @@ def add_application(
     next_action="",
     next_action_due_at="",
     last_follow_up_at="",
+    stage_state="已完成，等待结果",
 ):
     """新增投递记录，返回新纪录的 id"""
     conn = get_connection()
@@ -311,11 +382,11 @@ def add_application(
         max_sort = conn.execute("SELECT COALESCE(MAX(sort_order),0) FROM applications").fetchone()[0]
         cur = conn.execute(
             "INSERT INTO applications "
-            "(resume_id, current_status, priority, sort_order, applied_at, application_deadline, "
+            "(resume_id, current_status, stage_state, priority, sort_order, applied_at, application_deadline, "
             "next_action, next_action_due_at, last_follow_up_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
-                resume_id, status, priority, max_sort + 1,
+                resume_id, status, stage_state, priority, max_sort + 1,
                 applied_at or datetime.now().strftime("%Y-%m-%d"),
                 application_deadline, next_action, next_action_due_at, last_follow_up_at,
             ),
@@ -329,7 +400,7 @@ def add_application(
     return app_id
 
 
-def update_application_status(app_id, new_status):
+def update_application_status(app_id, new_status, stage_state=None):
     """更新投递状态，刷新时间戳，记录历史"""
     conn = get_connection()
     try:
@@ -351,10 +422,12 @@ def update_application_status(app_id, new_status):
         else:
             history = entry
 
+        if stage_state not in APPLICATION_STAGE_STATES:
+            stage_state = "已完成" if new_status in ("Offer", "终止") else "待处理"
         conn.execute(
-            "UPDATE applications SET current_status = ?, status_update_time = CURRENT_TIMESTAMP, "
-            "status_history = ? WHERE id = ?",
-            (new_status, history, app_id),
+            "UPDATE applications SET current_status = ?, stage_state = ?, "
+            "status_update_time = CURRENT_TIMESTAMP, status_history = ? WHERE id = ?",
+            (new_status, stage_state, history, app_id),
         )
         conn.commit()
     finally:
@@ -395,6 +468,7 @@ def update_application_details(
     application_deadline=None,
     next_action_due_at=None,
     last_follow_up_at=None,
+    stage_state=None,
 ):
     """集中更新投递详情，同时触发 Excel 镜像同步。"""
     updates, params = [], []
@@ -406,6 +480,9 @@ def update_application_details(
         updates.append("interview_feedback=?"); params.append(interview_feedback)
     if priority is not None:
         updates.append("priority=?"); params.append(priority)
+    if stage_state is not None and stage_state in APPLICATION_STAGE_STATES:
+        updates.append("stage_state=?"); params.append(stage_state)
+        updates.append("status_update_time=CURRENT_TIMESTAMP")
     for field, value in (
         ("applied_at", applied_at),
         ("application_deadline", application_deadline),
@@ -428,12 +505,14 @@ def update_application_details(
 
 
 def update_resume_details(resume_id, *, company_name=None, position_name=None, city=None,
-                          file_path=None, application_source=None, job_link=None, jd_text=None):
+                          file_path=None, application_source=None, job_link=None, jd_text=None,
+                          job_category=None, tags=None):
     """更新与投递展示有关的简历字段并同步镜像。"""
     values = {
         "company_name": company_name, "position_name": position_name, "city": city,
         "file_path": file_path, "application_source": application_source,
         "job_link": job_link, "jd_text": jd_text,
+        "job_category": job_category, "tags": tags,
     }
     updates = [(key, value) for key, value in values.items() if value is not None]
     if not updates:
@@ -452,12 +531,13 @@ def get_applications_with_resume():
     conn = get_connection()
     try:
         rows = conn.execute(
-            "SELECT a.id, a.resume_id, a.current_status, a.status_update_time, "
+            "SELECT a.id, a.resume_id, a.current_status, a.stage_state, a.status_update_time, "
             "       a.interview_feedback, a.next_action, a.status_history, "
             "       a.applied_at, a.application_deadline, a.next_action_due_at, a.last_follow_up_at, "
             "       a.priority, a.sort_order, "
             "       r.company_name, r.position_name, r.file_path, r.city, "
-            "       r.application_source, r.job_link, r.jd_text, r.upload_time "
+            "       r.application_source, r.job_link, r.job_category, r.tags, "
+            "       r.jd_text, r.upload_time "
             "FROM applications a "
             "JOIN resumes r ON a.resume_id = r.id "
             "ORDER BY a.sort_order ASC, a.status_update_time DESC"

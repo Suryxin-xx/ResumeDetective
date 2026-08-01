@@ -6,7 +6,7 @@ detail_dialog.py — 投递详情弹窗
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit,
     QPushButton, QGroupBox, QMessageBox, QLineEdit, QSpinBox,
-    QFileDialog, QListWidget, QListWidgetItem,
+    QFileDialog, QListWidget, QListWidgetItem, QComboBox,
 )
 from PyQt6.QtCore import Qt, QTimer
 
@@ -40,6 +40,9 @@ class JobDetailDialog(QDialog):
         self.edit_city.textChanged.connect(lambda: self._defer("city"))
         self.edit_source.textChanged.connect(lambda: self._defer("application_source"))
         self.edit_job_link.textChanged.connect(lambda: self._defer("job_link"))
+        self.edit_category.textChanged.connect(lambda: self._defer("job_category"))
+        self.edit_tags.textChanged.connect(lambda: self._defer("tags"))
+        self.edit_stage_state.currentTextChanged.connect(lambda: self._defer("stage_state"))
         self.edit_jd.textChanged.connect(lambda: self._defer("jd_text"))
         self.edit_feedback.textChanged.connect(lambda: self._defer("feedback"))
         self.edit_next.textChanged.connect(lambda: self._defer("next_action"))
@@ -79,6 +82,11 @@ class JobDetailDialog(QDialog):
         status = QLabel(f"阶段：{data['current_status']}")
         status.setStyleSheet("color:#555;margin-bottom:4px;")
         info_row.addWidget(status)
+        info_row.addWidget(QLabel("当前情况："))
+        self.edit_stage_state = QComboBox()
+        self.edit_stage_state.addItems(db_manager.APPLICATION_STAGE_STATES)
+        self.edit_stage_state.setCurrentText(data.get("stage_state") or "已完成，等待结果")
+        info_row.addWidget(self.edit_stage_state)
         layout.addLayout(info_row)
 
         source_row = QHBoxLayout()
@@ -91,6 +99,17 @@ class JobDetailDialog(QDialog):
         self.edit_job_link.setPlaceholderText("https://...")
         source_row.addWidget(self.edit_job_link, stretch=2)
         layout.addLayout(source_row)
+
+        category_row = QHBoxLayout()
+        category_row.addWidget(QLabel("岗位类型："))
+        self.edit_category = QLineEdit(data.get("job_category", ""))
+        self.edit_category.setPlaceholderText("研发 / 供应链 / 自定义")
+        category_row.addWidget(self.edit_category)
+        category_row.addWidget(QLabel("标签："))
+        self.edit_tags = QLineEdit(data.get("tags", ""))
+        self.edit_tags.setPlaceholderText("校招, 重点")
+        category_row.addWidget(self.edit_tags, stretch=2)
+        layout.addLayout(category_row)
 
         dates = QGroupBox("时间节点")
         dates_layout = QHBoxLayout(dates)
@@ -211,6 +230,10 @@ class JobDetailDialog(QDialog):
                 db_manager.update_resume_details(self._resume_id, application_source=self.edit_source.text())
             elif f == "job_link":
                 db_manager.update_resume_details(self._resume_id, job_link=self.edit_job_link.text())
+            elif f == "job_category":
+                db_manager.update_resume_details(self._resume_id, job_category=self.edit_category.text())
+            elif f == "tags":
+                db_manager.update_resume_details(self._resume_id, tags=self.edit_tags.text())
             elif f == "jd_text":
                 db_manager.update_resume_details(self._resume_id, jd_text=self.edit_jd.toPlainText())
             elif f == "feedback":
@@ -219,6 +242,10 @@ class JobDetailDialog(QDialog):
                 db_manager.update_application_details(self._app_id, next_action=self.edit_next.toPlainText())
             elif f == "priority":
                 db_manager.update_application_details(self._app_id, priority=self.edit_priority.value())
+            elif f == "stage_state":
+                db_manager.update_application_details(
+                    self._app_id, stage_state=self.edit_stage_state.currentText()
+                )
             elif f == "applied_at":
                 db_manager.update_application_details(self._app_id, applied_at=self.edit_applied_at.text().strip())
             elif f == "application_deadline":

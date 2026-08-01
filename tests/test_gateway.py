@@ -4,6 +4,7 @@ import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import urlencode
 
 import local_gateway
 
@@ -66,13 +67,14 @@ class GatewayHttpTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn(b'"status":"ok"', payload)
 
-        page_cases = (("/", "overview"), ("/board", "board"), ("/applications", "apps"), ("/tasks", "tasks"), ("/interviews", "interviews"), ("/resumes", "resumes"))
+        page_cases = (("/", "overview"), ("/board", "board"), ("/applications", "apps"), ("/tasks", "tasks"), ("/interviews", "interviews"), ("/resumes", "resumes"), ("/settings", "settings"))
         with patch.object(local_gateway, "_overview_page", return_value="overview"), \
              patch.object(local_gateway, "_board_page", return_value="board"), \
              patch.object(local_gateway, "_applications_page", return_value="apps"), \
              patch.object(local_gateway, "_tasks_page", return_value="tasks"), \
              patch.object(local_gateway, "_interviews_page", return_value="interviews"), \
-             patch.object(local_gateway, "_resumes_page", return_value="resumes"):
+             patch.object(local_gateway, "_resumes_page", return_value="resumes"), \
+             patch.object(local_gateway, "_settings_page", return_value="settings"):
             for path, expected in page_cases:
                 status, _, payload = self.request("GET", path)
                 self.assertEqual(status, 200)
@@ -169,6 +171,36 @@ class GatewayHttpTests(unittest.TestCase):
         self.assertEqual(dict(headers)["Location"], "/applications")
         update_status.assert_called_once_with(12, "已投递")
 
+    def test_entering_a_new_stage_defaults_to_pending(self):
+        payload = urlencode({
+            "status": "HR 面",
+            "previous_status": "业务面试",
+            "stage_state": "已完成，等待结果",
+            "priority": "0",
+        }).encode("utf-8")
+        with patch.object(local_gateway.db_manager, "update_application_status") as update_status, \
+             patch.object(local_gateway.db_manager, "update_application_details"), \
+             patch.object(local_gateway.db_manager, "update_resume_details"), \
+             patch.object(
+                 local_gateway,
+                 "_find_application",
+                 return_value={
+                     "id": 12,
+                     "resume_id": 22,
+                     "company_name": "测试公司",
+                     "position_name": "测试岗位",
+                     "file_path": "",
+                 },
+             ):
+            status, _, _ = self.request(
+                "POST",
+                "/application/12",
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                body=payload,
+            )
+        self.assertEqual(status, 303)
+        update_status.assert_called_once_with(12, "HR 面", "待处理")
+
     def test_gateway_controls_require_token_and_dispatch_after_response(self):
         actions = []
         dispatched = threading.Event()
@@ -233,6 +265,25 @@ class GatewayPageTests(unittest.TestCase):
         self.assertIn("/gateway/shutdown", page)
         self.assertIn("layout-token", page)
 
+    def test_branding_is_fixed_in_layout_and_settings(self):
+        layout = local_gateway._layout("测试", "", "", 8765)
+        self.assertIn("开发者：Suryxin-xx", layout)
+        self.assertIn("mailto:Finlandxxu@outlook.com", layout)
+        self.assertIn("https://github.com/Suryxin-xx/ResumeDetective", layout)
+
+        backup_status = {
+            "enabled": False,
+            "interval_days": 7,
+            "last_at": None,
+        }
+        with patch.object(local_gateway.data_safety, "automatic_backup_status", return_value=backup_status), \
+             patch.object(local_gateway.data_safety, "list_backups", return_value=[]):
+            settings = local_gateway._settings_page(8765)
+        self.assertIn("关于 Resume Detective", settings)
+        self.assertIn("Suryxin-xx/ResumeDetective", settings)
+        self.assertNotIn('name="developer_name"', settings)
+        self.assertNotIn('name="contact_email"', settings)
+
     def test_board_has_bounded_lanes_table_and_status_time(self):
         with patch.object(local_gateway.db_manager, "get_applications_with_resume", return_value=self.apps):
             page = local_gateway._board_page(8765)
@@ -257,6 +308,10 @@ class GatewayPageTests(unittest.TestCase):
         self.assertIn('/application/2/reopen', page)
         self.assertIn("状态更新时间", page)
         self.assertIn("流转详情", page)
+        self.assertIn('class="manage-row hidden"', page)
+        self.assertIn('select name="stage_state"', page)
+        self.assertIn('input name="job_category"', page)
+        self.assertNotIn("scrollIntoView", page)
 
     def test_status_flow_keeps_the_previous_stage_before_termination(self):
         app = self.apps[1]

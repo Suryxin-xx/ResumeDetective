@@ -5,6 +5,8 @@
 """
 
 import json
+from datetime import datetime
+import branding
 from paths import CONFIG_FILE
 import secure_store as sec
 
@@ -127,6 +129,56 @@ def set_gateway_port(port: int):
         raise ValueError("端口必须在 1024 到 65535 之间")
     cfg = load_config()
     cfg["gateway_port"] = port
+    save_config(cfg)
+
+
+def get_workspace_preferences() -> dict:
+    """读取网页工作台的非敏感展示设置。"""
+    cfg = load_config()
+    return {
+        "title": str(cfg.get("workspace_title") or "秋招工作台").strip() or "秋招工作台",
+        "developer_name": branding.DEVELOPER_NAME,
+        "contact_email": branding.CONTACT_EMAIL,
+        "project_url": branding.PROJECT_URL,
+    }
+
+
+def set_workspace_preferences(title="", *_legacy_branding_values):
+    """保存用户可定制的工作台标题；公开开发者信息由程序统一提供。"""
+    cfg = load_config()
+    cfg["workspace_title"] = str(title).strip() or "秋招工作台"
+    save_config(cfg)
+
+
+def get_backup_preferences() -> dict:
+    """自动备份默认关闭，避免未经用户选择持续占用磁盘。"""
+    cfg = load_config()
+    try:
+        interval_days = int(cfg.get("backup_interval_days", 7))
+    except (TypeError, ValueError):
+        interval_days = 7
+    if interval_days not in (1, 3, 7, 14, 30):
+        interval_days = 7
+    return {
+        "enabled": bool(cfg.get("automatic_backup_enabled", False)),
+        "interval_days": interval_days,
+        "last_backup_at": str(cfg.get("automatic_backup_last_at") or ""),
+    }
+
+
+def set_backup_preferences(enabled=False, interval_days=7):
+    interval_days = int(interval_days)
+    if interval_days not in (1, 3, 7, 14, 30):
+        raise ValueError("自动备份间隔只支持 1、3、7、14 或 30 天")
+    cfg = load_config()
+    cfg["automatic_backup_enabled"] = bool(enabled)
+    cfg["backup_interval_days"] = interval_days
+    save_config(cfg)
+
+
+def mark_automatic_backup_completed():
+    cfg = load_config()
+    cfg["automatic_backup_last_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
     save_config(cfg)
 
 

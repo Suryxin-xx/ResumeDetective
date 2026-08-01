@@ -19,7 +19,8 @@ MIRROR_FILE = paths.DATA_DIR / "秋招投递追踪.xlsx"
 SHEET_NAME = "岗位投递"
 HEADERS = [
     ("记录ID", 10), ("公司", 20), ("岗位", 25), ("城市", 14),
-    ("当前状态", 16), ("优先级", 10), ("状态更新时间", 20),
+    ("当前环节", 16), ("当前情况", 20), ("岗位类型", 16), ("自定义标签", 24),
+    ("优先级", 10), ("状态更新时间", 20),
     ("投递日期", 15), ("网申截止", 18), ("下一步行动", 36),
     ("下一步时间", 20), ("最后跟进", 18),
     ("面试反馈摘要", 44), ("简历路径", 36),
@@ -59,7 +60,8 @@ def sync_application_workbook(applications: list[dict] | None = None) -> Path:
         for row, app in enumerate(applications, 2):
             values = [
                 app.get("id"), app.get("company_name", ""), app.get("position_name", ""),
-                app.get("city", ""), app.get("current_status", ""), app.get("priority", 0),
+                app.get("city", ""), app.get("current_status", ""), app.get("stage_state", ""),
+                app.get("job_category", ""), app.get("tags", ""), app.get("priority", 0),
                 app.get("status_update_time", ""), app.get("applied_at", ""),
                 app.get("application_deadline", ""), app.get("next_action", ""),
                 app.get("next_action_due_at", ""), app.get("last_follow_up_at", ""),
@@ -69,8 +71,8 @@ def sync_application_workbook(applications: list[dict] | None = None) -> Path:
             ]
             for column, value in enumerate(values, 1):
                 cell = ws.cell(row, column, value)
-                cell.alignment = Alignment(vertical="top", wrap_text=column in (3, 10, 13, 14, 15, 16, 17, 18))
-                if column == 17 and value:
+                cell.alignment = Alignment(vertical="top", wrap_text=column in (3, 8, 13, 16, 17, 18, 19, 20))
+                if column == 19 and value:
                     cell.hyperlink = str(value)
                     cell.style = "Hyperlink"
             ws.row_dimensions[row].height = 48

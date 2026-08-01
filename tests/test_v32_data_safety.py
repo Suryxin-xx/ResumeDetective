@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import data_safety
 import db_manager
+import config_manager
 
 
 class V32DataAndBackupTests(unittest.TestCase):
@@ -38,6 +39,37 @@ class V32DataAndBackupTests(unittest.TestCase):
         for item in reversed(self.patches):
             item.stop()
         self.temp.cleanup()
+
+    def test_workspace_branding_cannot_be_overridden_by_personal_config(self):
+        config_file = self.data_dir / "config.json"
+        config_file.write_text(
+            json.dumps(
+                {
+                    "workspace_title": "我的秋招台",
+                    "developer_name": "自定义名字",
+                    "contact_email": "custom@example.com",
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        with patch.object(config_manager, "CONFIG_FILE", config_file):
+            preferences = config_manager.get_workspace_preferences()
+            config_manager.set_workspace_preferences(
+                "新标题", "仍想覆盖", "override@example.com"
+            )
+            saved = json.loads(config_file.read_text(encoding="utf-8"))
+
+        self.assertEqual(preferences["title"], "我的秋招台")
+        self.assertEqual(preferences["developer_name"], "Suryxin-xx")
+        self.assertEqual(preferences["contact_email"], "Finlandxxu@outlook.com")
+        self.assertEqual(
+            preferences["project_url"],
+            "https://github.com/Suryxin-xx/ResumeDetective",
+        )
+        self.assertEqual(saved["workspace_title"], "新标题")
+        self.assertEqual(saved["developer_name"], "自定义名字")
+        self.assertEqual(saved["contact_email"], "custom@example.com")
 
     def test_schema_dates_generated_task_and_interview_fields(self):
         resume_id = db_manager.add_resume("测试公司", "后端开发", "")
@@ -103,6 +135,31 @@ class V32DataAndBackupTests(unittest.TestCase):
         finally:
             connection.close()
         self.assertEqual(count, 1)
+
+    def test_stage_state_category_tags_and_scheduled_backup(self):
+        resume_id = db_manager.add_resume(
+            "分类公司", "供应链岗位", "", job_category="供应链", tags="国企, 重点"
+        )
+        app_id = db_manager.add_application(
+            resume_id, "测评", stage_state="待处理"
+        )
+        app = next(item for item in db_manager.get_applications_with_resume() if item["id"] == app_id)
+        self.assertEqual(app["stage_state"], "待处理")
+        self.assertEqual(app["job_category"], "供应链")
+        self.assertEqual(app["tags"], "国企, 重点")
+
+        with patch.object(
+            config_manager,
+            "get_backup_preferences",
+            return_value={
+                "enabled": True,
+                "interval_days": 7,
+                "last_backup_at": "",
+            },
+        ), patch.object(config_manager, "mark_automatic_backup_completed") as mark:
+            backup = data_safety.maybe_create_automatic_backup()
+        self.assertTrue(backup.is_dir())
+        mark.assert_called_once()
 
 
 if __name__ == "__main__":

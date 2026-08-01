@@ -29,9 +29,13 @@ EXCEL_HEADERS = [
     ("网申截止日期", 18),
     ("下一步时间", 20),
     ("最后跟进日期", 18),
+    ("当前情况", 20),
+    ("岗位类型", 18),
+    ("自定义标签", 28),
 ]
 
-STATUS_VALUES = ["已投递", "简历初筛", "笔试/无笔试", "业务面试", "HR面", "Offer", "终止"]
+STATUS_VALUES = db_manager.APPLICATION_STATUSES
+LEGACY_STATUS_MAP = {"简历初筛": "简历筛选", "笔试/无笔试": "笔试", "HR面": "HR 面"}
 
 
 def _sanitize_sheet_name(name):
@@ -79,6 +83,9 @@ def export_xlsx(output_path):
         ws.cell(row=row_idx, column=12, value=app.get("application_deadline", ""))
         ws.cell(row=row_idx, column=13, value=app.get("next_action_due_at", ""))
         ws.cell(row=row_idx, column=14, value=app.get("last_follow_up_at", ""))
+        ws.cell(row=row_idx, column=15, value=app.get("stage_state", ""))
+        ws.cell(row=row_idx, column=16, value=app.get("job_category", ""))
+        ws.cell(row=row_idx, column=17, value=app.get("tags", ""))
 
     wb.save(output_path)
     return len(apps)
@@ -121,10 +128,16 @@ def import_xlsx(input_path):
         application_deadline = str(row[11]).strip() if len(row) > 11 and row[11] else ""
         next_action_due_at = str(row[12]).strip() if len(row) > 12 and row[12] else ""
         last_follow_up_at = str(row[13]).strip() if len(row) > 13 and row[13] else ""
+        stage_state = str(row[14]).strip() if len(row) > 14 and row[14] else "已完成，等待结果"
+        job_category = str(row[15]).strip() if len(row) > 15 and row[15] else ""
+        tags = str(row[16]).strip() if len(row) > 16 and row[16] else ""
 
         # 校验状态
+        status = LEGACY_STATUS_MAP.get(status, status)
         if status not in STATUS_VALUES:
             status = "已投递"
+        if stage_state not in db_manager.APPLICATION_STAGE_STATES:
+            stage_state = "已完成" if status in ("Offer", "终止") else "已完成，等待结果"
 
         # 拷贝简历文件
         rel_path = ""
@@ -142,6 +155,8 @@ def import_xlsx(input_path):
             version_note=version_note,
             application_source=application_source,
             job_link=job_link,
+            job_category=job_category,
+            tags=tags,
         )
         app_id = db_manager.add_application(
             rid,
@@ -151,6 +166,7 @@ def import_xlsx(input_path):
             next_action=next_action,
             next_action_due_at=next_action_due_at,
             last_follow_up_at=last_follow_up_at,
+            stage_state=stage_state,
         )
 
         # 写入反馈和下一步（同时刷新固定 Excel 镜像）
@@ -177,6 +193,7 @@ def generate_template(output_path):
         "必填", "必填", "可选，本地简历文件路径", "可选",
         f"可选，默认'已投递'，可选值见「状态说明」sheet", "可选", "可选", "可选", "可选", "可选",
         "可选，YYYY-MM-DD", "可选，YYYY-MM-DD", "可选，YYYY-MM-DD HH:MM", "可选，YYYY-MM-DD",
+        "可选：待处理 / 已安排 / 已完成，等待结果 / 已完成", "可选，可自定义", "可选，逗号分隔",
     ]
     for col_idx, ((name, width), desc) in enumerate(zip(EXCEL_HEADERS, header_desc), 1):
         cell = ws.cell(row=1, column=col_idx, value=name)
@@ -188,7 +205,8 @@ def generate_template(output_path):
     example = ["字节跳动", "后端开发", "<请选择本地简历文件>",
                "负责后端服务开发...", "业务面试", "一面通过", "准备二面", "v2.0",
                "内推", "https://jobs.example.com/position/123",
-               "2026-07-28", "2026-08-10", "2026-08-02 19:00", "2026-07-30"]
+               "2026-07-28", "2026-08-10", "2026-08-02 19:00", "2026-07-30",
+               "已安排", "研发", "校招, 重点"]
     for col_idx, val in enumerate(example, 1):
         ws.cell(row=3, column=col_idx, value=val)
 

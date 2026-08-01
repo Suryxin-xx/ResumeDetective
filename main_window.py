@@ -15,9 +15,10 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
     QDialog, QScrollBar, QScrollArea, QGridLayout, QInputDialog,
 )
-from PyQt6.QtCore import QByteArray, Qt, QSize, QTimer, pyqtSignal
-from PyQt6.QtGui import QFont, QColor, QAction, QTextCursor
+from PyQt6.QtCore import QByteArray, Qt, QSize, QTimer, QUrl, pyqtSignal
+from PyQt6.QtGui import QFont, QColor, QAction, QDesktopServices, QTextCursor
 
+import branding
 import db_manager
 import config_manager
 import cli_ai
@@ -35,10 +36,11 @@ from tasks_widget import TasksWidget
 from interviews_widget import InterviewsWidget
 
 STATUS_COLORS = {
-    "已投递": "#BBDEFB", "简历初筛": "#FFE0B2", "笔试/无笔试": "#E1BEE7",
-    "业务面试": "#C8E6C9", "HR面": "#B2EBF2", "Offer": "#FFCDD2", "终止": "#CFD8DC",
+    "已投递": "#BBDEFB", "简历筛选": "#FFE0B2", "测评": "#E1BEE7",
+    "AI 面试": "#B2EBF2", "笔试": "#E1BEE7", "业务面试": "#C8E6C9",
+    "HR 面": "#B2EBF2", "Offer": "#FFCDD2", "终止": "#CFD8DC",
 }
-STATUS_LIST = ["已投递", "简历初筛", "笔试/无笔试", "业务面试", "HR面", "Offer", "终止"]
+STATUS_LIST = db_manager.APPLICATION_STATUSES
 
 
 class MainWindow(QMainWindow):
@@ -460,6 +462,8 @@ class MainWindow(QMainWindow):
                     jd_text=data["jd_text"], version_note=data.get("version_note", ""),
                     application_source=data.get("application_source", ""),
                     job_link=data.get("job_link", ""),
+                    job_category=data.get("job_category", ""),
+                    tags=data.get("tags", ""),
                 )
                 if rid:
                     db_manager.add_application(
@@ -1650,9 +1654,45 @@ class MainWindow(QMainWindow):
         grp5.setMinimumHeight(124)
         layout.addWidget(grp5, 2, 0, 1, 2)
 
+        # 项目信息
+        grp6 = QGroupBox("ℹ 关于 Resume Detective")
+        grp6.setStyleSheet(card_style)
+        g6 = QVBoxLayout(grp6)
+        identity = QLabel(
+            f"开发者：{branding.DEVELOPER_NAME}<br>"
+            f"联系邮箱：{branding.CONTACT_EMAIL}<br>"
+            f"开源地址：{branding.PROJECT_URL}"
+        )
+        identity.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        identity.setStyleSheet("color:#52657d; line-height:1.5;")
+        g6.addWidget(identity)
+        about_actions = QHBoxLayout()
+        btn_project = QPushButton("打开 GitHub")
+        btn_project.setFixedHeight(36)
+        btn_project.clicked.connect(
+            lambda _checked=False: QDesktopServices.openUrl(QUrl(branding.PROJECT_URL))
+        )
+        about_actions.addWidget(btn_project)
+        btn_issues = QPushButton("反馈问题")
+        btn_issues.setFixedHeight(36)
+        btn_issues.clicked.connect(
+            lambda _checked=False: QDesktopServices.openUrl(QUrl(branding.ISSUES_URL))
+        )
+        about_actions.addWidget(btn_issues)
+        btn_email = QPushButton("联系开发者")
+        btn_email.setFixedHeight(36)
+        btn_email.clicked.connect(
+            lambda _checked=False: QDesktopServices.openUrl(QUrl(f"mailto:{branding.CONTACT_EMAIL}"))
+        )
+        about_actions.addWidget(btn_email)
+        about_actions.addStretch()
+        g6.addLayout(about_actions)
+        grp6.setMinimumHeight(142)
+        layout.addWidget(grp6, 3, 0, 1, 2)
+
         layout.setColumnStretch(0, 1)
         layout.setColumnStretch(1, 1)
-        layout.setRowStretch(3, 1)
+        layout.setRowStretch(4, 1)
 
     def _save_gateway_port(self):
         """保存端口并平滑切换正在运行的本机网关。"""

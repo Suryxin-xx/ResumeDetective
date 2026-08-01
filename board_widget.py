@@ -24,34 +24,30 @@ from PyQt6.QtGui import QColor
 import db_manager
 from table_view import TableView
 
-# 7 个状态定义
-STATUS_LIST = [
-    "已投递",
-    "简历初筛",
-    "笔试/无笔试",
-    "业务面试",
-    "HR面",
-    "Offer",
-    "终止",
-]
+# 招聘环节与数据库保持单一来源，新增环节不会遗漏在桌面看板。
+STATUS_LIST = db_manager.APPLICATION_STATUSES
 
 # 各状态对应的颜色（浅色背景）
 STATUS_COLORS = {
     "已投递": QColor("#E3F2FD"),       # 浅蓝
-    "简历初筛": QColor("#FFF3E0"),      # 浅橙
-    "笔试/无笔试": QColor("#F3E5F5"),   # 浅紫
+    "简历筛选": QColor("#FFF3E0"),      # 浅橙
+    "测评": QColor("#F3E5F5"),
+    "AI 面试": QColor("#E0F7FA"),
+    "笔试": QColor("#F3E5F5"),   # 浅紫
     "业务面试": QColor("#E8F5E9"),      # 浅绿
-    "HR面": QColor("#E0F7FA"),          # 浅青
+    "HR 面": QColor("#E0F7FA"),          # 浅青
     "Offer": QColor("#FFEBEE"),         # 浅红（喜庆）
     "终止": QColor("#ECEFF1"),          # 浅灰
 }
 
 STATUS_HEADER_COLORS = {
     "已投递": QColor("#BBDEFB"),
-    "简历初筛": QColor("#FFE0B2"),
-    "笔试/无笔试": QColor("#E1BEE7"),
+    "简历筛选": QColor("#FFE0B2"),
+    "测评": QColor("#E1BEE7"),
+    "AI 面试": QColor("#B2EBF2"),
+    "笔试": QColor("#E1BEE7"),
     "业务面试": QColor("#C8E6C9"),
-    "HR面": QColor("#B2EBF2"),
+    "HR 面": QColor("#B2EBF2"),
     "Offer": QColor("#FFCDD2"),
     "终止": QColor("#CFD8DC"),
 }
@@ -204,8 +200,7 @@ class BoardWidget(QWidget):
         self.filter_input.textChanged.connect(self._apply_filter)
         filter_bar.addWidget(self.filter_input, stretch=1)
         self.filter_status = QComboBox()
-        self.filter_status.addItems(["全部状态", "已投递", "简历初筛", "笔试/无笔试",
-                                      "业务面试", "HR面", "Offer", "终止"])
+        self.filter_status.addItems(["全部状态", *STATUS_LIST])
         self.filter_status.currentTextChanged.connect(lambda _: self._apply_filter())
         filter_bar.addWidget(QLabel("状态："))
         filter_bar.addWidget(self.filter_status)
@@ -341,7 +336,7 @@ class BoardWidget(QWidget):
         apps = db_manager.get_applications_with_resume()
         total = len(apps)
         interviewing = sum(
-            1 for a in apps if a["current_status"] in ("业务面试", "HR面")
+            1 for a in apps if a["current_status"] in ("AI 面试", "业务面试", "HR 面")
         )
         offers = sum(1 for a in apps if a["current_status"] == "Offer")
         self.label_total.setText(f"总投递: {total}")

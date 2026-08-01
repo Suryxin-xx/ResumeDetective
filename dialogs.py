@@ -71,6 +71,14 @@ class AddResumeDialog(QDialog):
         self.edit_source.setPlaceholderText("如：官网、内推、牛客、招聘群")
         form.addRow("投递来源：", self.edit_source)
 
+        self.edit_category = QLineEdit()
+        self.edit_category.setPlaceholderText("如：研发、供应链、产品；也可自定义")
+        form.addRow("岗位类型：", self.edit_category)
+
+        self.edit_tags = QLineEdit()
+        self.edit_tags.setPlaceholderText("如：校招, 国企, 重点（逗号分隔）")
+        form.addRow("自定义标签：", self.edit_tags)
+
         self.edit_job_link = QLineEdit()
         self.edit_job_link.setPlaceholderText("岗位官网链接（建议与 JD 快照一起保存）")
         form.addRow("岗位链接：", self.edit_job_link)
@@ -83,7 +91,7 @@ class AddResumeDialog(QDialog):
         self.edit_deadline.setPlaceholderText("YYYY-MM-DD")
         form.addRow("网申截止：", self.edit_deadline)
 
-        self.edit_next_action = QLineEdit()
+        self.edit_next_action = QLineEdit("等待结果")
         self.edit_next_action.setPlaceholderText("例如：完成测评、准备一面")
         form.addRow("下一步行动：", self.edit_next_action)
 
@@ -135,6 +143,8 @@ class AddResumeDialog(QDialog):
             "jd_text": self.edit_jd.toPlainText().strip(),
             "application_source": self.edit_source.text().strip(),
             "job_link": self.edit_job_link.text().strip(),
+            "job_category": self.edit_category.text().strip(),
+            "tags": self.edit_tags.text().strip(),
             "version_note": self.edit_version.text().strip(),
             "applied_at": self.edit_applied_at.text().strip(),
             "application_deadline": self.edit_deadline.text().strip(),

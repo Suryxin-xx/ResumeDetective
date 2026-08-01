@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from hashlib import sha256
 import json
 from pathlib import Path
+from threading import Lock
 import re
 import shutil
 import sqlite3
@@ -14,6 +15,7 @@ import paths
 
 
 BACKUP_ROOT = paths.DATA_DIR.parent / f"{paths.DATA_DIR.name}-Backups"
+_SCHEDULE_LOCK = Lock()
 
 
 def database_health(db_path: Path | None = None) -> dict:
@@ -110,6 +112,42 @@ def list_backups() -> list[Path]:
         key=lambda item: item.name,
         reverse=True,
     )
+
+
+def automatic_backup_status(now: datetime | None = None) -> dict:
+    """返回自动备份是否到期；不创建、不删除任何文件。"""
+    import config_manager
+
+    preferences = config_manager.get_backup_preferences()
+    now = now or datetime.now().astimezone()
+    last_at = None
+    if preferences["last_backup_at"]:
+        try:
+            last_at = datetime.fromisoformat(preferences["last_backup_at"])
+            if last_at.tzinfo is None:
+                last_at = last_at.astimezone()
+        except ValueError:
+            last_at = None
+    due = bool(
+        preferences["enabled"]
+        and (
+            last_at is None
+            or now >= last_at + timedelta(days=preferences["interval_days"])
+        )
+    )
+    return {**preferences, "due": due, "last_at": last_at}
+
+
+def maybe_create_automatic_backup(now: datetime | None = None) -> Path | None:
+    """仅在用户启用且间隔到期时建立验证过的备份。"""
+    import config_manager
+
+    with _SCHEDULE_LOCK:
+        if not automatic_backup_status(now)["due"]:
+            return None
+        backup = create_backup("automatic")
+        config_manager.mark_automatic_backup_completed()
+        return backup
 
 
 def restore_backup(backup_dir: str | Path) -> Path:
