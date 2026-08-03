@@ -1,121 +1,201 @@
-# ResumeDetective
+<div align="center">
+  <img src="assets/app-icon-128.png" width="96" alt="ResumeDetective 图标">
 
-ResumeDetective 是一个本地优先的 Windows 求职进度工作台，用来管理意向岗位、投递流转、待办、面试复盘、关联简历与 JD。v4 由 Go + React 重构，发布版是单个 EXE，不要求用户安装 Python、Go、Node.js 或 SQLite。
+  # ResumeDetective
 
-<p align="center"><img src="screenshots/v4-overview.png" alt="ResumeDetective 总览" width="100%"></p>
+  **本地优先的 Windows 求职进度工作台**
 
-## 主要功能
+  把意向岗位、投递流转、待办、面试复盘、简历与 JD 收进一条清晰的求职主线。
 
-- 表格化投递管理：按环节、状态、标签和关键词筛选，在当前行展开编辑。
-- 专注型总览：集中展示需要行动的事项、四组流程进展和最近状态变化，避免被过细的阶段图表淹没。
-- 明亮高对比界面：采用语义化颜色、较大正文字号与固定页脚，长时间使用仍能快速找到重点。
-- 流转详情：保留“已投递 → 测评 → 业务面试 → 终止”等历史，便于复盘在哪一环节流失。
-- 意向清单：先收集公司与岗位，确认后可一键转为正式投递。
-- 简历与 JD 归档：岗位关闭后仍可查看当时的 JD；简历汇总支持列表/卡片切换，只呈现岗位、标签和对应简历等核心信息。
-- 行动清单和面试复盘：将后续准备与具体投递关联。
-- 本地 AI：支持 DeepSeek API 直连与 Reasonix CLI 两种模式，只提供 JD 匹配、简历建议和面试准备等求职相关能力。
-- 个人资料与经历库：项目、实习、校园经历只维护一次，AI 分析自动结合真实素材，不必重复粘贴。
-- 便携数据与备份：数据位于根目录 `data`，备份统一进入 `backups`，兼容 Python v3 数据迁移与错位数据自修复。
-- Excel 单向镜像：新增、修改、删除投递或记录面试后，自动重建 `data/秋招投递追踪.xlsx`；SQLite 仍是唯一事实源，Excel 用于脱离网页快速查看与筛选。
-- 托盘、自启与更新：后台静默运行，可选登录 Windows 后启动，可从托盘或设置页重启、退出，并支持可信 Release 更新。
+  [![Release](https://img.shields.io/github/v/release/Suryxin-xx/ResumeDetective?display_name=tag&sort=semver)](https://github.com/Suryxin-xx/ResumeDetective/releases)
+  [![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-2563eb)](#下载与使用)
+  [![Go](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)](go.mod)
+  [![License](https://img.shields.io/github/license/Suryxin-xx/ResumeDetective)](LICENSE)
+
+  [下载最新版](https://github.com/Suryxin-xx/ResumeDetective/releases) · [功能一览](#功能一览) · [数据安全](#数据与安全) · [问题反馈](https://github.com/Suryxin-xx/ResumeDetective/issues)
+</div>
+
+<p align="center"><img src="screenshots/v4-overview.png" alt="ResumeDetective 总览页面" width="100%"></p>
+
+## 为什么做这个工具
+
+招聘网站负责投递，Excel 负责记结果，日历负责提醒，文件夹里放着不同版本的简历，面试问题又散落在笔记中。ResumeDetective 将这些信息围绕“一个岗位”关联起来，让你随时回答三个问题：
+
+1. 这个岗位现在走到哪一步？
+2. 下一步需要做什么？
+3. 当时投了哪份简历，JD 和面试反馈是什么？
+
+它不是自动投递器，也不是公网招聘平台。程序运行在你的 Windows 电脑上，核心数据默认只保存在 EXE 同级目录。
+
+## 功能一览
+
+| 模块 | 能做什么 |
+| --- | --- |
+| 投递管理 | 按招聘环节、状态、岗位类型、标签和关键词筛选；原位编辑并保留完整流转记录 |
+| 总览与行动 | 聚合今日待办、进行中岗位、面试、Offer 和最近状态变化 |
+| 意向岗位 | 先保存公司、岗位和 JD，准备好后可一键转为正式投递 |
+| 简历与复盘 | 为每个岗位绑定简历，归档 JD，并记录每轮面试问题、结果与改进项 |
+| 个人资料库 | 集中维护教育、项目、实习、校园和获奖经历，为定制简历与 AI 分析复用 |
+| AI 辅助 | 可选 DeepSeek API 或 Reasonix CLI，用于 JD 匹配、简历建议和面试准备 |
+| Excel 镜像 | 自动生成 `data/秋招投递追踪.xlsx`，无需打开软件也能快速查看与筛选 |
+| 本地维护 | 托盘静默运行、登录自启、手动/定期备份、Python v3 数据迁移及 Release 更新 |
 
 <table>
-  <tr><td width="50%"><strong>投递管理</strong></td><td width="50%"><strong>个人资料与经历库</strong></td></tr>
-  <tr><td><img src="screenshots/v4-applications.png" alt="投递管理"></td><td><img src="screenshots/v4-profile.png" alt="个人资料与经历库"></td></tr>
+  <tr>
+    <td width="50%"><strong>投递管理</strong></td>
+    <td width="50%"><strong>个人资料与经历库</strong></td>
+  </tr>
+  <tr>
+    <td><img src="screenshots/v4-applications.png" alt="投递管理页面"></td>
+    <td><img src="screenshots/v4-profile.png" alt="个人资料与经历库页面"></td>
+  </tr>
 </table>
 
 ## 下载与使用
 
-1. 从 [GitHub Releases](https://github.com/Suryxin-xx/ResumeDetective/releases) 下载 `ResumeDetective-windows-x64.zip`。
-2. 可用同名 `.sha256` 校验压缩包，然后解压到自己有写入权限的文件夹。
-3. 双击 `ResumeDetective.exe`。发布包自带一套完全虚构的演示数据，并打开 `http://127.0.0.1:8765`。
-4. 关闭浏览器不会退出后台服务；请从托盘菜单选择“退出”，或在设置页退出。
+### 普通用户
 
-首次打开可直接浏览完整流程。准备记录真实求职信息时，在总览点击“清除演示数据”；程序只删除带发布演示标记的记录，不会删除之后自行创建的数据。本地源码测试版不会自动注入演示数据。
+1. 从 [GitHub Releases](https://github.com/Suryxin-xx/ResumeDetective/releases) 下载 `ResumeDetective-windows-x64.zip` 和同名 `.sha256` 文件。
+2. 解压完整 ZIP 到有写入权限的文件夹，不要只复制其中的 EXE。
+3. 双击 `ResumeDetective.exe`。程序会在后台启动，并打开固定的本机地址 `http://127.0.0.1:8765`。
+4. 关闭浏览器不会退出服务；需要彻底退出时，请使用系统托盘菜单或设置页。
 
-端口默认固定为 `8765`，可在设置中修改，保存后重启生效。服务只监听 `127.0.0.1`，不会向局域网开放。
+发布包内含一套完全虚构的演示数据，方便首次下载后直接了解完整流程。开始记录真实信息前，可在总览点击“清除演示数据”；该操作只处理带演示标记的记录。
 
-## 数据与迁移
+> [!NOTE]
+> 默认端口为 `8765`，可在设置中修改并在重启后生效。服务只监听 `127.0.0.1`，不会向局域网或公网开放。
+
+> [!WARNING]
+> 当前 Windows EXE 尚未进行商业代码签名，SmartScreen 可能显示“未知发布者”。请只从本仓库的 Releases 下载，并使用 `.sha256` 文件核对压缩包。
+
+### SHA-256 校验
+
+在下载目录打开 PowerShell：
+
+```powershell
+Get-FileHash .\ResumeDetective-windows-x64.zip -Algorithm SHA256
+Get-Content .\ResumeDetective-windows-x64.zip.sha256
+```
+
+两处哈希值一致即可。
+
+## 日常工作流
+
+```text
+意向岗位
+   ↓ 一键转投递
+已投递 → 简历筛选 → 测评 / AI 面试 / 笔试 → 业务面试 → HR 面 → Offer / 终止
+   ├─ 关联当时使用的简历与 JD
+   ├─ 生成或维护下一步行动
+   └─ 每轮面试结束后记录复盘
+```
+
+新增、修改或删除投递，以及更新简历和面试记录后，程序会重新生成 Excel 镜像。SQLite 始终是唯一事实源，Excel 用于查看、筛选和备份，不建议直接回写。
+
+## 数据与安全
 
 ```text
 ResumeDetective.exe
 data/
-  resume_detective.db
-  秋招投递追踪.xlsx
-  config.json
-  .env
-  resumes/
-  attachments/
-  updates/
-backups/
-  automatic-*.db
-  ResumeDetective-Python-v3-legacy.zip
-releases/
-  vX.Y.Z/
+  resume_detective.db       # 主数据库
+  秋招投递追踪.xlsx          # 自动生成的只读镜像
+  config.json               # 本机设置
+  .env                      # AI Key 等本机配置
+  resumes/                  # 受管简历
+  attachments/              # 岗位附件
+backups/                    # 自动和手动备份
 ```
 
-- v4 不直接修改 Python v3 数据库。设置页的“一键导入”会先备份，再把旧数据复制到新库。
-- 正式 ZIP 内的 `data/resume_detective.db` 只含 `data.example/sample-data.json` 生成的虚构案例；本地构建与已有数据目录不会被填充。
-- 更新数据库结构时由程序执行兼容迁移；仍建议在升级前点击“立即备份”。
-- Excel 镜像由程序自动生成，不建议直接回写；如果同步时工作簿正被 Excel 占用，关闭文件后重启 ResumeDetective 即会再次同步。
-- `data`、`.env`、数据库、简历和备份已被 `.gitignore` 与提交前安全检查双重拦截。
-- `.env` 只是避免密钥进入 Git，并非加密保险箱；不要共享该文件或整个 `data` 目录。
+- 数据位于程序目录，便于整体迁移和备份；更新器只替换 EXE，不覆盖 `data`。
+- `.gitignore`、提交前安全脚本和 GitHub Actions 会拦截数据库、简历、`.env`、备份与发布包。
+- `.env` 用于避免密钥进入 Git，但它不是加密保险箱；请勿共享整个 `data` 目录。
+- 删除受管简历或附件时优先进入系统回收站，降低误删风险。
+- 修改类 HTTP 请求执行本机 Host、Origin 与请求体检查。
+- 更新只接受固定 GitHub 仓库、HTTPS 下载地址和可验证的 Release 资产摘要。
+
+建议在升级或批量导入前，先进入设置页执行一次“立即备份”。
 
 ## AI 配置
 
+AI 功能完全可选，不配置也不影响投递管理、复盘、备份和 Excel 镜像。
+
 ### DeepSeek API
 
-在“设置 → AI Provider”中选择 DeepSeek API，填写 API Key 并测试连接。密钥写入本机 `data/.env`，不会返回网页，也不会写入应用日志。设置页可手动查询账户余额；只有点击时才请求 DeepSeek，余额与查询时间不会保存。只有用户主动点击 AI 分析时，相关 JD、个人资料与经历库文本才会发送到配置的 API；手机号、出生日期等敏感字段不会加入默认分析上下文。
+在“设置 → AI Provider”中选择 DeepSeek API，填写 API Key 并测试连接。Key 写入本机 `data/.env`，不会返回前端或写入应用日志。只有主动点击分析时，相关 JD、选定简历和资料库文本才会发送到 API；手机号、出生日期等字段不会加入默认上下文。
+
+设置页支持手动查询账户余额，查询结果与时间不会写入数据库。
 
 ### Reasonix CLI
 
-自行从 [DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix) 下载 Reasonix，在设置中选择其可执行文件。ResumeDetective 通过 CLI 的非交互 JSON 输出调用它；Reasonix 仍使用自己的模型与密钥配置。设置页可查看 Reasonix 官方 Release 更新。
+也可以从 [DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix) 自行下载 Reasonix，并在设置中选择其可执行文件。ResumeDetective 通过非交互 JSON 输出调用 CLI，不会将 Reasonix 二进制或其密钥打入本项目源码和发布包。
 
-AI 输出仅作为求职材料建议，不会编造经历，也不应代替用户核对事实。
+AI 输出只作为求职材料建议，请在使用前核对事实、措辞和经历真实性。
 
-## 从源码运行与打包
+## 从 Python v3 迁移
 
-开发环境需要 Go 1.25+、MinGW GCC、Node.js 24+。最终发布包不包含这些开发依赖。
+当前 `main` 是 Go + React 版本。Python v3.3.1 源码完整保留在 [`main-python`](https://github.com/Suryxin-xx/ResumeDetective/tree/main-python) 分支。
+
+v4 不会直接修改旧数据库。在设置页选择 Python 版数据目录后，一键导入会先建立备份，再复制并迁移数据库、简历和附件。建议迁移完成后同时保留旧目录与迁移前备份，确认使用稳定后再自行归档。
+
+## 从源码运行
+
+开发环境：Windows 10/11、Go 1.25+、MinGW GCC、Node.js 24+。
 
 ```powershell
+git clone https://github.com/Suryxin-xx/ResumeDetective.git
+cd ResumeDetective
+
 npm --prefix frontend ci
 npm --prefix frontend run build
 go test ./...
-go run ./cmd/resumedetective --data-dir .\local-data --no-browser
+go run ./cmd/resumedetective --data-dir .\local-artifacts\dev-data --no-browser
 ```
 
-Windows 正式构建：
+前端修改后需要重新执行 `npm --prefix frontend run build`，生成内容会嵌入 Go EXE。
+
+### Windows 正式构建
 
 ```powershell
 .\scripts\atuo.bat -Version 4.1.0
 ```
 
-脚本会执行安全扫描、前端构建、Go 测试与静态检查，写入图标和版本信息，再输出 ZIP 与 SHA-256。若同版本目录已存在，一键入口会在新包构建成功后将旧目录归档到 `releases/archive`，不会覆盖或删除旧发布物。直接调用 `build_windows.ps1` 默认仍拒绝覆盖，可显式添加 `-ArchiveExisting` 重建同一版本。
+构建入口依次执行仓库安全扫描、React/TypeScript 构建、Go 测试、`go vet`、Windows GUI EXE 构建、版本资源写入、虚构演示库生成、ZIP 压缩和 SHA-256 生成。
 
-## 安全边界
+同版本发布目录已存在时，`atuo.bat` 会在新包成功生成后将旧目录归档到 `releases/archive`。详细说明见 [PACKAGING.md](PACKAGING.md)。
 
-- 本机 HTTP 接口绑定 `127.0.0.1`，修改类请求检查同源信息。
-- 更新只信任固定 GitHub 仓库、HTTPS 下载地址和 Release 资产 SHA-256 digest。
-- 简历与数据库始终由用户管理；卸载程序不会主动删除 `data`。
-- 本项目当前未提供代码签名。首次下载时 Windows 可能显示未知发布者，应从官方 Release 下载并核对 SHA-256。
+## 分支说明
+
+| 分支 | 用途 |
+| --- | --- |
+| `main` | 当前维护的 Go + React v4 主线 |
+| `main-python` | Python v3.3.1 历史版本，只进行必要的存档维护 |
+
+提交代码前建议运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check_repository_safety.ps1
+git add -A
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check_repository_safety.ps1 -Staged
+git diff --cached --check
+```
 
 ## 配套工具
 
-PDF 转换功能已拆分为独立小工具，减少 ResumeDetective 的体积与攻击面：
+PDF 转换能力已拆分为独立项目，以减小 ResumeDetective 的体积和攻击面：
 
-- [ImagePDFConverter](https://github.com/Suryxin-xx/ImagePDFConverter)
-- [Word_PDF2Image](https://github.com/Suryxin-xx/Word_PDF2Image)
+- [ImagePDFConverter](https://github.com/Suryxin-xx/ImagePDFConverter)：图片与 PDF 转换
+- [Word_PDF2Image](https://github.com/Suryxin-xx/Word_PDF2Image)：Word/PDF 转图片
 
 ## 开发与致谢
 
-- 开发者：[Suryxin-xx](https://github.com/Suryxin-xx) · Finlandxxu@outlook.com
-- 仓库：[Suryxin-xx/ResumeDetective](https://github.com/Suryxin-xx/ResumeDetective)
-- ChatGPT 与 DeepSeek 参与需求分析、代码实现和测试，最终取舍与发布由开发者人工负责。
+- 开发者：[Suryxin-xx](https://github.com/Suryxin-xx) · [Finlandxxu@outlook.com](mailto:Finlandxxu@outlook.com)
+- 项目地址：[Suryxin-xx/ResumeDetective](https://github.com/Suryxin-xx/ResumeDetective)
+- ChatGPT/Codex 与 DeepSeek 参与需求分析、代码实现、调试和测试，最终取舍与发布由开发者人工负责。
 - AI 接入参考并兼容 [esengine/DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix) 的 CLI 使用方式。
-- Excel 单向镜像使用 [Excelize](https://github.com/xuri/excelize) 生成，避免要求用户安装 Office 或 Python 运行库。
-- 产品与网页交互设计参考了 [xuuuu-cpu/offerFlow-llm-feature](https://github.com/xuuuu-cpu/offerFlow-llm-feature) 的部分思路；代码实现为本项目独立重构。
-- 明亮主题的语义色层级参考了 [GitHub Primer](https://primer.style/) 与 [Microsoft Fluent 2](https://fluent2.microsoft.design/design-tokens) 的公开设计令牌方法，未复制组件代码。
+- Excel 镜像使用 [Excelize](https://github.com/xuri/excelize) 生成。
+- 产品与网页交互参考了 [xuuuu-cpu/offerFlow-llm-feature](https://github.com/xuuuu-cpu/offerFlow-llm-feature) 的部分思路；代码为本项目独立重构。
+- 视觉层级参考 [GitHub Primer](https://primer.style/) 与 [Microsoft Fluent 2](https://fluent2.microsoft.design/design-tokens) 的公开设计方法。
 
 ## License
 
-[MIT](LICENSE)
+本项目基于 [MIT License](LICENSE) 开源。如果它对你有帮助，欢迎 Star、提交 Issue 或参与改进。

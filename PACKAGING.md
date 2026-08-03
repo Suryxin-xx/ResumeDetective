@@ -22,7 +22,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check_repository_s
 git diff --cached --check
 ```
 
-确认没有 `data`、`.env`、数据库、简历、备份、Reasonix CLI 或发布 ZIP 后，再提交到计划使用的 `main-v2` 分支。
+确认没有 `data`、`.env`、数据库、简历、备份、Reasonix CLI 或发布 ZIP 后，再提交到当前维护的 `main` 分支。Python v3.3.1 历史源码保留在 `main-python`，不要将新版 PR 合并回该分支。
 
 ## 一键打包
 
