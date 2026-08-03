@@ -1,2 +1,2 @@
 #!/bin/sh
-python scripts/check_repository_safety.py --staged
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/check_repository_safety.ps1 -Staged

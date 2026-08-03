@@ -1,0 +1,4 @@
+import { ExternalLink, FileImage, Images } from "lucide-react";
+import { PageHeader } from "../components";
+import type { PageProps } from "../App";
+export default function ToolsPage(_:PageProps){return <><PageHeader eyebrow="COMPANION TOOLS" title="配套工具" description="PDF 小工具已拆分成独立项目，主程序保持轻量。"/><div className="tool-cards"><a href="https://github.com/Suryxin-xx/ImagePDFConverter" target="_blank" rel="noreferrer"><span><Images size={24}/></span><div><p className="eyebrow">IMAGE TO PDF</p><h2>ImagePDFConverter</h2><p>图片批量整理与 PDF 转换，需要时单独下载。</p></div><strong>查看 GitHub <ExternalLink size={15}/></strong></a><a href="https://github.com/Suryxin-xx/Word_PDF2Image" target="_blank" rel="noreferrer"><span><FileImage size={24}/></span><div><p className="eyebrow">DOCUMENT TO IMAGE</p><h2>Word_PDF2Image</h2><p>Word、PDF 转图片，适合投递材料预览与分享。</p></div><strong>查看 GitHub <ExternalLink size={15}/></strong></a></div></>}

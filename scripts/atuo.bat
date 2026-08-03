@@ -1,17 +1,15 @@
 @echo off
+chcp 65001 >nul
 setlocal
-title ResumeDetective Release Builder
-
-echo [ResumeDetective] Preparing a clean release package...
-powershell.exe -NoProfile -NoLogo -ExecutionPolicy Bypass -File "%~dp0build_exe.ps1"
-set "EXIT_CODE=%ERRORLEVEL%"
-
-if not "%EXIT_CODE%"=="0" (
-    echo [ERROR] Release build failed. Exit code: %EXIT_CODE%
-) else (
-    echo [OK] Release package/build completed.
+cd /d "%~dp0.."
+echo [ResumeDetective] Running safety checks, tests, and release build...
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\scripts\build_windows.ps1" -ArchiveExisting %*
+if errorlevel 1 (
+  echo.
+  echo Build failed. Review the first error above.
+  pause
+  exit /b 1
 )
-
 echo.
+echo Build completed. See the newest version folder under .\releases\.
 pause
-exit /b %EXIT_CODE%
