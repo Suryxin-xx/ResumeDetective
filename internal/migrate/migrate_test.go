@@ -121,3 +121,27 @@ func TestOneClickImportKeepsDatabasesSeparate(t *testing.T) {
 		t.Fatalf("legacy changed: %#v %v", legacyApps, err)
 	}
 }
+
+func TestInspectAcceptsDirectoryOrDatabasePath(t *testing.T) {
+	source := filepath.Join(t.TempDir(), "Python v3 data")
+	if err := os.MkdirAll(source, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := store.Open(filepath.Join(source, "data.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.CreateApplication(context.Background(), store.CreateApplicationInput{CompanyName: "路径测试", PositionName: "开发"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, input := range []string{source, filepath.Join(source, "data.db"), `"` + source + `"`} {
+		status := Inspect(input)
+		if !status.Available || status.Applications != 1 || status.SourceDir != source {
+			t.Fatalf("input=%q status=%#v", input, status)
+		}
+	}
+}

@@ -23,6 +23,7 @@ import (
 	"github.com/Suryxin-xx/ResumeDetective/internal/brand"
 	"github.com/Suryxin-xx/ResumeDetective/internal/config"
 	"github.com/Suryxin-xx/ResumeDetective/internal/excelmirror"
+	"github.com/Suryxin-xx/ResumeDetective/internal/folderpicker"
 	"github.com/Suryxin-xx/ResumeDetective/internal/httpapi"
 	"github.com/Suryxin-xx/ResumeDetective/internal/migrate"
 	"github.com/Suryxin-xx/ResumeDetective/internal/settings"
@@ -127,11 +128,12 @@ func main() {
 	autostartService := autostart.New("ResumeDetective")
 	httpapi.Version = version
 	handler := httpapi.NewWithOptions(st, files, paths, v3Dir, func() { requestAction("quit") }, logger, httpapi.Options{
-		Settings:  manager,
-		AI:        aiService,
-		Updater:   updateService,
-		AutoStart: autostartService,
-		Restart:   func() { requestAction("restart") },
+		Settings:      manager,
+		AI:            aiService,
+		Updater:       updateService,
+		AutoStart:     autostartService,
+		PickDirectory: folderpicker.Pick,
+		Restart:       func() { requestAction("restart") },
 	})
 	server := httpapi.NewHTTPServer(addr, handler)
 	logger.Info("ResumeDetective 已启动", "version", version, "url", url, "data", paths.DataDir)

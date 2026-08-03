@@ -34,8 +34,9 @@ type Status struct {
 }
 
 func Inspect(sourceDir string) Status {
+	sourceDir = normalizeSource(sourceDir)
 	if !validSource(sourceDir) {
-		return Status{Reason: "未发现可导入的 v3 数据"}
+		return Status{Reason: "所选目录中未找到 Python v3 的 data.db"}
 	}
 	db, err := sql.Open("sqlite3", "file:"+filepath.ToSlash(filepath.Join(sourceDir, "data.db"))+"?mode=ro")
 	if err != nil {
@@ -54,6 +55,7 @@ func ImportIntoStore(ctx context.Context, st *store.Store, paths config.Paths, s
 	if !status.Available {
 		return Report{Reason: status.Reason}, errors.New(status.Reason)
 	}
+	sourceDir = status.SourceDir
 	empty, err := st.BusinessDataEmpty(ctx)
 	if err != nil {
 		return Report{}, err
@@ -96,8 +98,8 @@ func ImportIntoStore(ctx context.Context, st *store.Store, paths config.Paths, s
 
 func Discover(explicit string) string {
 	for _, candidate := range []string{explicit, os.Getenv(sourceEnv)} {
-		if validSource(candidate) {
-			return filepath.Clean(candidate)
+		if normalized := normalizeSource(candidate); normalized != "" {
+			return normalized
 		}
 	}
 	starts := make([]string, 0, 2)
@@ -327,6 +329,25 @@ func validSource(dir string) bool {
 	}
 	info, err := os.Stat(filepath.Join(dir, "data.db"))
 	return err == nil && info.Mode().IsRegular()
+}
+
+func normalizeSource(value string) string {
+	clean := strings.Trim(strings.TrimSpace(os.ExpandEnv(value)), "\"")
+	if clean == "" {
+		return ""
+	}
+	clean = filepath.Clean(clean)
+	if info, err := os.Stat(clean); err == nil && info.Mode().IsRegular() && strings.EqualFold(filepath.Base(clean), "data.db") {
+		clean = filepath.Dir(clean)
+	}
+	if !validSource(clean) {
+		return ""
+	}
+	abs, err := filepath.Abs(clean)
+	if err != nil {
+		return clean
+	}
+	return filepath.Clean(abs)
 }
 func samePath(a, b string) bool {
 	aa, _ := filepath.Abs(a)

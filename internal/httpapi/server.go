@@ -27,29 +27,31 @@ import (
 )
 
 type Server struct {
-	store      *store.Store
-	web        fs.FS
-	log        *slog.Logger
-	resumesDir string
-	backupsDir string
-	paths      config.Paths
-	v3Dir      string
-	shutdown   func()
-	restart    func()
-	settings   *settings.Manager
-	ai         *ai.Service
-	updater    *update.Service
-	autostart  autostart.Controller
+	store         *store.Store
+	web           fs.FS
+	log           *slog.Logger
+	resumesDir    string
+	backupsDir    string
+	paths         config.Paths
+	v3Dir         string
+	shutdown      func()
+	restart       func()
+	settings      *settings.Manager
+	ai            *ai.Service
+	updater       *update.Service
+	autostart     autostart.Controller
+	pickDirectory func(context.Context) (string, error)
 }
 
 var Version = "4.1.0-dev"
 
 type Options struct {
-	Settings  *settings.Manager
-	AI        *ai.Service
-	Restart   func()
-	Updater   *update.Service
-	AutoStart autostart.Controller
+	Settings      *settings.Manager
+	AI            *ai.Service
+	Restart       func()
+	Updater       *update.Service
+	AutoStart     autostart.Controller
+	PickDirectory func(context.Context) (string, error)
 }
 
 func New(st *store.Store, web fs.FS, paths config.Paths, v3Dir string, shutdown func(), logger *slog.Logger) http.Handler {
@@ -57,7 +59,7 @@ func New(st *store.Store, web fs.FS, paths config.Paths, v3Dir string, shutdown 
 }
 
 func NewWithOptions(st *store.Store, web fs.FS, paths config.Paths, v3Dir string, shutdown func(), logger *slog.Logger, options Options) http.Handler {
-	s := &Server{store: st, web: web, log: logger, resumesDir: paths.ResumesDir, backupsDir: paths.BackupsDir, paths: paths, v3Dir: v3Dir, shutdown: shutdown, restart: options.Restart, settings: options.Settings, ai: options.AI, updater: options.Updater, autostart: options.AutoStart}
+	s := &Server{store: st, web: web, log: logger, resumesDir: paths.ResumesDir, backupsDir: paths.BackupsDir, paths: paths, v3Dir: v3Dir, shutdown: shutdown, restart: options.Restart, settings: options.Settings, ai: options.AI, updater: options.Updater, autostart: options.AutoStart, pickDirectory: options.PickDirectory}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/dashboard", s.dashboard)
@@ -70,6 +72,8 @@ func NewWithOptions(st *store.Store, web fs.FS, paths config.Paths, v3Dir string
 	mux.HandleFunc("POST /api/backups", s.createBackup)
 	mux.HandleFunc("DELETE /api/demo", s.clearDemo)
 	mux.HandleFunc("GET /api/migration/status", s.migrationStatus)
+	mux.HandleFunc("POST /api/migration/inspect", s.inspectV3)
+	mux.HandleFunc("POST /api/migration/select", s.selectV3Directory)
 	mux.HandleFunc("POST /api/migration/import", s.importV3)
 	mux.HandleFunc("POST /api/system/quit", s.quit)
 	mux.HandleFunc("POST /api/system/restart", s.restartApp)
@@ -299,8 +303,45 @@ func (s *Server) migrationStatus(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, migrate.Inspect(s.v3Dir))
 }
 
+func (s *Server) inspectV3(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		SourceDir string `json:"sourceDir"`
+	}
+	if err := decodeJSON(w, r, &in); err != nil {
+		return
+	}
+	writeJSON(w, http.StatusOK, migrate.Inspect(in.SourceDir))
+}
+
+func (s *Server) selectV3Directory(w http.ResponseWriter, r *http.Request) {
+	if s.pickDirectory == nil {
+		writeError(w, http.StatusServiceUnavailable, "当前运行模式不支持选择文件夹，请手动填写路径")
+		return
+	}
+	directory, err := s.pickDirectory(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if strings.TrimSpace(directory) == "" {
+		writeJSON(w, http.StatusOK, map[string]bool{"canceled": true})
+		return
+	}
+	writeJSON(w, http.StatusOK, migrate.Inspect(directory))
+}
+
 func (s *Server) importV3(w http.ResponseWriter, r *http.Request) {
-	report, err := migrate.ImportIntoStore(r.Context(), s.store, s.paths, s.v3Dir)
+	var in struct {
+		SourceDir string `json:"sourceDir"`
+	}
+	if err := decodeJSON(w, r, &in); err != nil {
+		return
+	}
+	sourceDir := strings.TrimSpace(in.SourceDir)
+	if sourceDir == "" {
+		sourceDir = s.v3Dir
+	}
+	report, err := migrate.ImportIntoStore(r.Context(), s.store, s.paths, sourceDir)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
