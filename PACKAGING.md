@@ -1,95 +1,79 @@
-# Packaging Notes
+# ResumeDetective v4 发布说明
 
-## Source release
+## 单根目录结构
 
-The development folder is the canonical source repository and can be pushed
-directly after `scripts/check_repository_safety.py` passes. Do not copy it to a
-second GitHub-only folder.
+| 目录 | 用途 | 是否提交 Git |
+| --- | --- | --- |
+| `Gadgets\ResumeDetective` | 唯一源码仓库，也是本机测试根目录 | 是（仅跟踪源码） |
+| `ResumeDetective\data` | 真实数据库、简历、`.env` 与配置 | 否 |
+| `ResumeDetective\backups` | 自动/手动备份与唯一 Python v3 归档 | 否 |
+| `ResumeDetective\releases\vX.Y.Z` | GitHub Release 发布物 | 否 |
 
-Use the public EXE entry point:
+日常只在 `Gadgets\ResumeDetective` 提交 Git；`.gitignore` 与安全脚本会拦截运行数据、根目录 EXE、备份和发布物。
 
-- `scripts/build_exe.ps1`
-
-It first creates a clean staging tree and then runs PyInstaller from that tree.
-The staging step is intentional: it prevents local API keys, databases, resumes,
-chat history, Reasonix runtime files, and caches from entering the release.
-
-The build command creates a temporary isolated workspace at:
-
-- `%TEMP%\ResumeDetective-Build`
-
-Pinned build dependencies are cached separately under:
-
-- `%LOCALAPPDATA%\ResumeDetective\BuildEnv`
-
-The cache is keyed by `RUNTIME_VERSION`, Python version, and
-`requirements-build.txt`. It is intentionally reused across releases.
-
-The normal development folder is now the canonical GitHub source tree.
-The temporary PyInstaller workspace is removed by the public build entry point
-after both successful and failed builds.
-
-## Windows release
-
-Run the public build entry point from the project root:
+## 提交源码前
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_exe.ps1
+cd E:\Agent\Project\Job\Gadgets\ResumeDetective
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check_repository_safety.ps1
+git status
+git add -A
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check_repository_safety.ps1 -Staged
+git diff --cached --check
 ```
 
-The permanent release-only folder is:
+确认没有 `data`、`.env`、数据库、简历、备份、Reasonix CLI 或发布 ZIP 后，再提交到计划使用的 `main-v2` 分支。
 
-- sibling directory `ResumeDetective-Releases`
+## 一键打包
 
-It contains only versioned GitHub Release archives and SHA-256 files:
+双击或在终端运行兼容入口：
 
-- `ResumeDetective-Releases/ResumeDetective-vX.Y.Z-windows-x64-full.zip`
-- `ResumeDetective-Releases/ResumeDetective-vX.Y.Z-windows-x64-full.zip.sha256`
-- `ResumeDetective-Releases/ResumeDetective-vX.Y.Z-windows-x64-update.zip`
-- `ResumeDetective-Releases/ResumeDetective-vX.Y.Z-windows-x64-update.zip.sha256`
+```powershell
+.\scripts\atuo.bat -Version 4.1.0
+```
 
-The full package contains one executable and two launch modes:
+也可以直接运行实际构建脚本：
 
-- `ResumeDetective.exe`: desktop application.
-- `ResumeDetective.exe --gateway`: standalone localhost web workspace with a
-  Windows system-tray controller and no console window.
-- `启动网页看板.bat`: one-click silent gateway launcher. It prefers the packaged
-  unified EXE and falls back to `pythonw` only in a source checkout.
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1 -Version 4.1.0
+```
 
-The update package contains only the executable, launcher, `VERSION`,
-`RUNTIME_VERSION`, and `runtime-manifest.json`. It can be applied only when the
-installed and update `RUNTIME_VERSION` values match.
+脚本依次执行仓库安全扫描、前端构建、Go 测试、`go vet`、Windows GUI EXE 构建、图标/版本资源写入、ZIP 压缩和 SHA-256 生成。`atuo.bat` 如果发现同版本目录，会在新包完整生成后把旧目录移入 `releases\archive\vX.Y.Z-时间戳`，不会覆盖或删除旧发布物；构建失败时旧目录保持原位。
 
-The gateway listens on `127.0.0.1:8765` by default. The port can be changed
-in desktop Settings; both launch modes read the same local configuration.
-Only one gateway process may own a given data directory. Repeated launcher
-invocations reuse the address published by the active instance instead of
-creating additional background processes.
-The tray menu opens the workspace or exits the background gateway.
+直接运行 `build_windows.ps1` 时默认仍会拒绝覆盖。确实需要重建同一版本可显式使用：
 
-## Important
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1 -Version 4.1.0 -ArchiveExisting
+```
 
-- Do not publish your live `data` directory.
-- Do not publish your local encrypted key files.
-- Do not commit or bundle `Reasonix Cli/reasonix.exe`; users obtain it upstream.
-- Do not send only `ResumeDetective.exe` to end users.
-- Upload both generated ZIP files and both SHA-256 files to GitHub Releases.
-- Do not include `screenshots/gateway-*.png`; those files are local QA captures.
-- Bump `RUNTIME_VERSION` whenever Python or a dependency in
-  `requirements-build.txt` changes.
+## 输出结构
 
-## Antivirus and code signing
+```text
+ResumeDetective\releases\v4.1.0\
+├── ResumeDetective\
+│   ├── ResumeDetective.exe
+│   ├── ResumeDetective.exe.sha256
+│   ├── README.md
+│   ├── LICENSE
+│   ├── data\
+│   │   └── resume_detective.db（由虚构样例生成，可在总览一键清除）
+│   ├── screenshots\
+│   └── data.example\
+├── ResumeDetective-windows-x64.zip
+└── ResumeDetective-windows-x64.zip.sha256
+```
 
-The public build uses one-folder mode, does not use UPX, and adds a Windows
-version resource. These choices reduce heuristic false positives, but an
-unsigned executable can still trigger SmartScreen or third-party antivirus.
+## GitHub Release 上传什么
 
-For public releases, configure one of:
+只需上传：
 
-- `RESUMEDETECTIVE_SIGN_SHA1`: certificate thumbprint in the Windows store.
-- `RESUMEDETECTIVE_SIGN_PFX` and `RESUMEDETECTIVE_SIGN_PASSWORD`: PFX path and
-  password.
+1. `ResumeDetective-windows-x64.zip`
+2. `ResumeDetective-windows-x64.zip.sha256`
 
-An RFC3161 timestamp is added through DigiCert by default. Override it with
-`RESUMEDETECTIVE_SIGN_TIMESTAMP`. The build fails if signing was requested but
-the resulting signature cannot be verified.
+不要上传整个 `releases\v4.1.0\ResumeDetective` 文件夹、真实 `data`、`backups` 或 `.env`。GitHub 会自动提供 Source code ZIP/TAR，不需要再手工打源码包。
+
+自动更新器按 `ResumeDetective + windows/win + x64/amd64 + .zip` 识别资产，因此不要随意修改 ZIP 名称。发布后应在一台能访问 GitHub API 的机器上先检查更新，再验证下载、校验、替换与回滚。
+
+## 本机测试版
+
+本机只使用仓库根目录的 `ResumeDetective.exe`。修改后运行 `scripts\build_local.ps1` 生成测试 EXE，它始终读取同级 `data`；正式打包不会覆盖本机测试 EXE 或数据。升级前仍建议在设置页点击“立即备份”。

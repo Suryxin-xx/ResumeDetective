@@ -1,0 +1,31 @@
+name: Verify
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Repository safety check
+        shell: pwsh
+        run: ./scripts/check_repository_safety.ps1
+      - name: Build frontend
+        run: npm --prefix frontend ci && npm --prefix frontend run build
+      - name: Test Go application
+        shell: pwsh
+        run: |
+          $env:CGO_ENABLED = "1"
+          go test ./...
+          go vet ./...

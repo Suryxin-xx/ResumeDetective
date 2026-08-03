@@ -1,21 +1,7 @@
-# 本地数据模板
+# 本地数据目录模板
 
-这个目录只用于说明数据结构，可以安全提交到 GitHub；程序不会在这里保存真实数据。
+ResumeDetective 首次启动会在 EXE 旁自动创建 `data`，通常不需要手工复制本目录。
 
-源码模式下，数据库、简历、Excel 镜像、聊天记录和 API Key 默认保存在：
+如需直接配置 AI，可把 `.env.example` 复制为 `data/.env`，再填写密钥。真实 `.env`、数据库、简历和日志都不得提交 Git；手动与自动备份统一保存在 EXE 同级的 `backups`，同样不会进入 Git。
 
-```text
-%LOCALAPPDATA%\ResumeDetective\Development
-```
-
-开发者可以在仓库根目录创建不会被 Git 跟踪的 `.resumedetective.local.json`：
-
-```json
-{
-  "data_dir": "D:\\PrivateData\\ResumeDetective"
-}
-```
-
-也可以使用环境变量 `RESUME_DETECTIVE_DATA_DIR`。优先级为：环境变量、本地配置文件、系统默认目录。
-
-API Key 由 Windows DPAPI 加密后写入个人数据目录的 `secret.json.enc`。Reasonix 调用时，程序会在同一外置目录的 `reasonix/.env` 中生成 CLI 所需变量；这两个文件都不会进入源码仓库。
+`sample-data.json` 提供一套完全虚构的投递、意向、待办、个人资料与经历案例。正式打包脚本会据此生成发布 ZIP 内的全新演示数据库；本地测试 EXE 和已有 `data` 不会自动导入它。

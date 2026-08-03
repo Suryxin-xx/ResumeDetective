@@ -1,0 +1,156 @@
+{
+  "description": "完全虚构的 ResumeDetective 发布演示数据；仅由正式打包脚本生成全新演示数据库。",
+  "profile": {
+    "fullName": "林知夏",
+    "city": "杭州",
+    "education": "硕士",
+    "school": "海岳大学",
+    "major": "工业工程",
+    "targetRole": "项目管理 / 供应链数字化",
+    "summary": "关注复杂项目协同、流程优化与数据驱动决策。"
+  },
+  "materials": [
+    {
+      "materialType": "项目经历",
+      "title": "校园物流调度仿真项目",
+      "tags": "Python, 数据分析, 项目协同",
+      "startTime": "2025-09",
+      "endTime": "2026-01",
+      "content": "负责需求拆解、数据清洗与跨小组进度同步；以虚构样本完成路线仿真，并将平均等待时间降低约 18%。"
+    },
+    {
+      "materialType": "实习经历",
+      "title": "制造企业计划运营实习",
+      "tags": "Excel, 生产计划, 沟通协调",
+      "startTime": "2025-06",
+      "endTime": "2025-08",
+      "content": "维护周度计划看板，跟踪异常物料并整理复盘模板；示例内容仅用于演示资料库结构。"
+    }
+  ],
+  "applications": [
+    {
+      "companyName": "星澜科技",
+      "positionName": "研发项目管理培训生",
+      "city": "上海",
+      "source": "官网",
+      "category": "项目管理",
+      "tags": "校招, 新能源",
+      "currentStatus": "简历筛选",
+      "stageState": "已完成，等待结果",
+      "priority": 4,
+      "appliedAt": "2026-07-18",
+      "jdText": "负责研发项目计划、风险跟踪、会议纪要与跨团队协同。"
+    },
+    {
+      "companyName": "云岫智能",
+      "positionName": "供应链数字化专员",
+      "city": "杭州",
+      "source": "内推",
+      "category": "供应链",
+      "tags": "数据分析, 制造业",
+      "currentStatus": "测评",
+      "stageState": "待处理",
+      "priority": 5,
+      "appliedAt": "2026-07-25",
+      "jdText": "参与供应链指标分析、流程梳理和数字化项目落地。"
+    },
+    {
+      "companyName": "青屿机器人",
+      "positionName": "产品运营管培生",
+      "city": "深圳",
+      "source": "校园宣讲",
+      "category": "产品运营",
+      "tags": "机器人, 管培生",
+      "currentStatus": "AI 面试",
+      "stageState": "已安排",
+      "priority": 3,
+      "appliedAt": "2026-07-21",
+      "jdText": "负责用户研究、产品数据分析与运营项目推进。"
+    },
+    {
+      "companyName": "远帆能源",
+      "positionName": "项目控制工程师",
+      "city": "苏州",
+      "source": "招聘平台",
+      "category": "项目管理",
+      "tags": "新能源, PMO",
+      "currentStatus": "业务面试",
+      "stageState": "已安排",
+      "priority": 5,
+      "appliedAt": "2026-07-12",
+      "jdText": "维护项目基线计划，识别进度风险并推动跨部门闭环。"
+    },
+    {
+      "companyName": "微光半导体",
+      "positionName": "市场分析专员",
+      "city": "无锡",
+      "source": "官网",
+      "category": "市场",
+      "tags": "半导体, 行业研究",
+      "currentStatus": "终止",
+      "stageState": "已完成",
+      "priority": 2,
+      "appliedAt": "2026-07-08",
+      "jdText": "跟踪行业趋势、客户需求和竞争格局。"
+    },
+    {
+      "companyName": "澄川数据",
+      "positionName": "商业分析培训生",
+      "city": "北京",
+      "source": "内推",
+      "category": "数据分析",
+      "tags": "SQL, 商业分析",
+      "currentStatus": "Offer",
+      "stageState": "已完成",
+      "priority": 4,
+      "appliedAt": "2026-07-03",
+      "jdText": "通过数据分析支持经营决策与业务复盘。"
+    }
+  ],
+  "targets": [
+    {
+      "companyName": "澄川机器人",
+      "positionName": "产品运营管培生",
+      "city": "深圳",
+      "status": "待研究",
+      "priority": 3,
+      "notes": "先确认业务部门与培养方向。"
+    },
+    {
+      "companyName": "北辰智造",
+      "positionName": "供应链计划工程师",
+      "city": "南京",
+      "status": "待投递",
+      "priority": 4,
+      "notes": "确认网申截止时间并定制简历。"
+    }
+  ],
+  "tasks": [
+    {
+      "title": "复盘项目经历中的量化指标",
+      "dueDate": "2026-08-08",
+      "priority": 4,
+      "state": "open",
+      "source": "demo"
+    },
+    {
+      "title": "完成云岫智能在线测评",
+      "dueDate": "2026-08-05",
+      "priority": 5,
+      "state": "open",
+      "source": "demo"
+    }
+  ],
+  "interviews": [
+    {
+      "applicationCompany": "远帆能源",
+      "round": "一面",
+      "interviewTime": "2026-08-06T14:00",
+      "summary": "围绕项目协同与风险识别展开。",
+      "result": "待确认",
+      "questions": "如何处理关键节点延期？",
+      "weakPoints": "量化结果还不够具体。",
+      "followUp": "补充进度偏差与改进指标。"
+    }
+  ]
+}

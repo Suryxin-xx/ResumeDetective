@@ -1,46 +1,41 @@
-# Python cache and virtual environments
-__pycache__/
-*.py[cod]
-*.pyo
-*.egg-info/
-*.egg
-.venv/
-env/
-
-# Personal runtime data. Source mode stores it outside the repository, while
-# this rule also protects legacy/local data folders left beside the source.
-data/
-.resumedetective.local.json
-local-artifacts/
-
-# Optional Reasonix CLI is downloaded by each user and never committed.
-Reasonix Cli/
-reasonix.exe
-.reasonix.exe.new
-reasonix.exe.bak
-
-# Defense in depth for sensitive/generated file types.
+# Personal and portable runtime data (database, resumes, API keys, backups)
+/data/
+/backups/
+/releases/
+/ResumeDetective.exe
+/.resumedetective.local.json
+/local-artifacts/
 *.db
 *.db-shm
 *.db-wal
 *.enc
-*.env
-!.env.example
 *.xlsx
-*.tmp.xlsx
 *.jsonl
+**/.env
+!**/.env.example
 
-# Build and release outputs belong in GitHub Releases, not source control.
-build/
-dist/
-release/
+# Optional external tools are installed by each user
+/Reasonix Cli/
+reasonix.exe
+.reasonix.exe.new
+reasonix.exe.bak
+
+# Dependencies, build and QA output
+/frontend/node_modules/
+/frontend/dist/
+/bin/
+/build/
+/release/
+/.qa-output/
+/.tmp-qa-*/
+/.tmp-*
+/.tmp-build/
+/.tmp-legacy-archive/
+/coverage/
 *.zip
 *.sha256
 
-# Local QA captures
-screenshots/gateway-*.png
-
-# IDE / OS
+# IDE and OS files
 .vscode/
 .idea/
 *.swp
