@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
@@ -146,5 +147,71 @@ func TestBackupCreatesConsistentDatabase(t *testing.T) {
 	items, err := backup.ListApplications(context.Background())
 	if err != nil || len(items) != 1 {
 		t.Fatalf("backup content: %#v %v", items, err)
+	}
+}
+
+func TestImportV3SnapshotMapsSharedColumns(t *testing.T) {
+	root := t.TempDir()
+	sourcePath := filepath.Join(root, "legacy.db")
+	source, err := Open(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := source.CreateApplication(context.Background(), CreateApplicationInput{
+		CompanyName: "旧版公司", PositionName: "后端", City: "上海", Source: "官网",
+		JobLink: "https://example.com/job", JDText: "旧版 JD", CurrentStatus: "测评", Priority: 2,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := source.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	legacy, err := sql.Open("sqlite3", sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		"ALTER TABLE resumes DROP COLUMN job_category", "ALTER TABLE resumes DROP COLUMN tags",
+		"ALTER TABLE applications DROP COLUMN stage_state", "ALTER TABLE applications DROP COLUMN applied_at",
+		"ALTER TABLE applications DROP COLUMN application_deadline", "ALTER TABLE applications DROP COLUMN next_action_due_at",
+		"ALTER TABLE applications DROP COLUMN last_follow_up_at", "ALTER TABLE job_tasks DROP COLUMN source",
+		"ALTER TABLE interviews DROP COLUMN result", "ALTER TABLE interviews DROP COLUMN questions",
+		"ALTER TABLE interviews DROP COLUMN weak_points", "ALTER TABLE interviews DROP COLUMN follow_up",
+	} {
+		if _, err := legacy.Exec(statement); err != nil {
+			legacy.Close()
+			t.Fatalf("%s: %v", statement, err)
+		}
+	}
+	if _, err := legacy.Exec("PRAGMA user_version=5"); err != nil {
+		t.Fatal(err)
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	target, err := Open(filepath.Join(root, "target.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer target.Close()
+	if err := target.ImportV3Snapshot(context.Background(), sourcePath); err != nil {
+		t.Fatal(err)
+	}
+	items, err := target.ListApplications(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items=%#v", items)
+	}
+	item := items[0]
+	if item.CompanyName != "旧版公司" || item.PositionName != "后端" || item.City != "上海" || item.Source != "官网" ||
+		item.JobLink != "https://example.com/job" || item.JDText != "旧版 JD" || item.CurrentStatus != "测评" || item.Priority != 2 {
+		t.Fatalf("shared columns not preserved: %+v", item)
+	}
+	if item.StageState != "已完成，等待结果" || item.Category != "" || item.Tags != "" || item.AppliedAt != "" {
+		t.Fatalf("new column defaults not applied: %+v", item)
 	}
 }

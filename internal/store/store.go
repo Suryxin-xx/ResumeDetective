@@ -144,7 +144,11 @@ func repairLegacyResumeRows(db *sql.DB) error {
 	// into the new column order, shifting eight fields while keeping the data.
 	// A timestamp in application_source combined with a non-timestamp
 	// upload_time uniquely identifies those migrated rows.
-	_, err := db.Exec(`UPDATE resumes
+	_, err := db.Exec(repairLegacyResumesSQL)
+	return err
+}
+
+const repairLegacyResumesSQL = `UPDATE resumes
 SET city=COALESCE(job_category,''),
     application_source=COALESCE(tags,''),
     job_link=COALESCE(jd_text,''),
@@ -154,9 +158,7 @@ SET city=COALESCE(job_category,''),
     upload_time=application_source,
     version_note=job_link
 WHERE CAST(application_source AS TEXT) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]?[0-9][0-9]:[0-9][0-9]:[0-9][0-9]*'
-  AND COALESCE(CAST(upload_time AS TEXT),'') NOT GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]?[0-9][0-9]:[0-9][0-9]:[0-9][0-9]*'`)
-	return err
-}
+  AND COALESCE(CAST(upload_time AS TEXT),'') NOT GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]?[0-9][0-9]:[0-9][0-9]:[0-9][0-9]*'`
 
 func repairLegacyTargetRows(db *sql.DB) error {
 	// An early v3→v4 copier inserted the old ten-column layout with SELECT *.
@@ -449,15 +451,93 @@ func (s *Store) ImportV3Snapshot(ctx context.Context, snapshot string) error {
 	}
 	defer tx.Rollback()
 	for _, table := range []string{"resumes", "materials", "profile", "job_targets", "applications", "application_attachments", "job_tasks", "interviews"} {
-		if _, err := tx.ExecContext(ctx, "INSERT INTO main."+table+" SELECT * FROM legacy."+table); err != nil {
+		if err := importSharedColumns(ctx, tx, table); err != nil {
 			return fmt.Errorf("导入表 %s: %w", table, err)
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	if _, err := tx.ExecContext(ctx, repairLegacyResumesSQL); err != nil {
+		return fmt.Errorf("修复旧版简历字段: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, repairLegacyTargetsSQL); err != nil {
+		return fmt.Errorf("修复旧版意向数据: %w", err)
+	}
+	return tx.Commit()
+}
+
+type importColumn struct {
+	name         string
+	notNull      bool
+	defaultValue sql.NullString
+	primaryKey   bool
+}
+
+func importSharedColumns(ctx context.Context, tx *sql.Tx, table string) error {
+	target, err := importTableColumns(ctx, tx, "main", table)
+	if err != nil {
 		return err
 	}
-	_, err = conn.ExecContext(ctx, repairLegacyTargetsSQL)
-	return err
+	source, err := importTableColumns(ctx, tx, "legacy", table)
+	if err != nil {
+		return err
+	}
+	sourceNames := make(map[string]bool, len(source))
+	for _, column := range source {
+		sourceNames[column.name] = true
+	}
+	if !sourceNames["id"] {
+		return errors.New("旧表缺少 id 列")
+	}
+	shared := make([]string, 0, len(target))
+	for _, column := range target {
+		if sourceNames[column.name] {
+			shared = append(shared, quoteIdentifier(column.name))
+			continue
+		}
+		if column.notNull && !column.defaultValue.Valid && !column.primaryKey {
+			return fmt.Errorf("新版必填列 %s 在旧表中不存在且没有默认值", column.name)
+		}
+	}
+	if len(shared) == 0 {
+		return errors.New("新旧表没有可映射的同名列")
+	}
+	columns := strings.Join(shared, ",")
+	statement := fmt.Sprintf("INSERT INTO main.%s (%s) SELECT %s FROM legacy.%s", quoteIdentifier(table), columns, columns, quoteIdentifier(table))
+	if _, err := tx.ExecContext(ctx, statement); err != nil {
+		return err
+	}
+	return nil
+}
+
+func importTableColumns(ctx context.Context, tx *sql.Tx, schema, table string) ([]importColumn, error) {
+	query := fmt.Sprintf("PRAGMA %s.table_info(%s)", quoteIdentifier(schema), quoteIdentifier(table))
+	rows, err := tx.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	columns := make([]importColumn, 0)
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var column importColumn
+		var dataType string
+		if err := rows.Scan(&cid, &column.name, &dataType, &notNull, &column.defaultValue, &primaryKey); err != nil {
+			return nil, err
+		}
+		column.notNull = notNull != 0
+		column.primaryKey = primaryKey != 0
+		columns = append(columns, column)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(columns) == 0 {
+		return nil, errors.New("数据表不存在或没有列")
+	}
+	return columns, nil
+}
+
+func quoteIdentifier(value string) string {
+	return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
 }
 
 func ParseID(raw string) (int64, error) {
