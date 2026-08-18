@@ -29,13 +29,13 @@ git diff --cached --check
 双击或在终端运行兼容入口：
 
 ```powershell
-.\scripts\atuo.bat -Version 4.1.0
+.\scripts\atuo.bat -Version 4.2.0
 ```
 
 也可以直接运行实际构建脚本：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1 -Version 4.1.0
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1 -Version 4.2.0
 ```
 
 脚本依次执行仓库安全扫描、前端构建、Go 测试、`go vet`、Windows GUI EXE 构建、图标/版本资源写入、ZIP 压缩和 SHA-256 生成。`atuo.bat` 如果发现同版本目录，会在新包完整生成后把旧目录移入 `releases\archive\vX.Y.Z-时间戳`，不会覆盖或删除旧发布物；构建失败时旧目录保持原位。
@@ -43,13 +43,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1 
 直接运行 `build_windows.ps1` 时默认仍会拒绝覆盖。确实需要重建同一版本可显式使用：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1 -Version 4.1.0 -ArchiveExisting
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1 -Version 4.2.0 -ArchiveExisting
 ```
 
 ## 输出结构
 
 ```text
-ResumeDetective\releases\v4.1.0\
+ResumeDetective\releases\v4.2.0\
 ├── ResumeDetective\
 │   ├── ResumeDetective.exe
 │   ├── ResumeDetective.exe.sha256
@@ -70,7 +70,7 @@ ResumeDetective\releases\v4.1.0\
 1. `ResumeDetective-windows-x64.zip`
 2. `ResumeDetective-windows-x64.zip.sha256`
 
-不要上传整个 `releases\v4.1.0\ResumeDetective` 文件夹、真实 `data`、`backups` 或 `.env`。GitHub 会自动提供 Source code ZIP/TAR，不需要再手工打源码包。
+不要上传整个 `releases\v4.2.0\ResumeDetective` 文件夹、真实 `data`、`backups` 或 `.env`。GitHub 会自动提供 Source code ZIP/TAR，不需要再手工打源码包。
 
 自动更新器按 `ResumeDetective + windows/win + x64/amd64 + .zip` 识别资产，因此不要随意修改 ZIP 名称。发布后应在一台能访问 GitHub API 的机器上先检查更新，再验证下载、校验、替换与回滚。
 

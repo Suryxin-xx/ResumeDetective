@@ -18,6 +18,7 @@ type demoFile struct {
 	Targets      []store.JobTargetInput `json:"targets"`
 	Tasks        []demoTask             `json:"tasks"`
 	Interviews   []demoInterview        `json:"interviews"`
+	Offers       []demoOffer            `json:"offers"`
 }
 type demoApplication struct {
 	store.CreateApplicationInput
@@ -29,6 +30,10 @@ type demoTask struct {
 type demoInterview struct {
 	ApplicationCompany                                                     string `json:"applicationCompany"`
 	Round, InterviewTime, Summary, Result, Questions, WeakPoints, FollowUp string
+}
+type demoOffer struct {
+	ApplicationCompany string `json:"applicationCompany"`
+	store.UpsertOfferInput
 }
 
 func main() {
@@ -121,6 +126,18 @@ func main() {
 			fail(err)
 		}
 		mark(st, ctx, "interview", id)
+	}
+	for _, item := range demo.Offers {
+		applicationID := apps[item.ApplicationCompany]
+		if applicationID == 0 {
+			fail(fmt.Errorf("offer references unknown company: %s", item.ApplicationCompany))
+		}
+		item.ApplicationID = applicationID
+		id, err := st.UpsertOffer(ctx, item.UpsertOfferInput)
+		if err != nil {
+			fail(err)
+		}
+		mark(st, ctx, "offer", id)
 	}
 	if err := st.Close(); err != nil {
 		fail(err)

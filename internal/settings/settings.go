@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	DefaultPort          = 8765
-	DefaultWorkspaceName = "秋招工作台"
+	DefaultPort               = 8765
+	DefaultWorkspaceName      = "秋招工作台"
+	DefaultResumeNameTemplate = "{company}-{position}"
 )
 
 type AIConfig struct {
@@ -31,11 +32,20 @@ type Config struct {
 	Theme               string   `json:"theme"`
 	OpenBrowserOnStart  bool     `json:"openBrowserOnStart"`
 	StartAtLogin        bool     `json:"startAtLogin"`
+	ResumeNameTemplate  string   `json:"resumeNameTemplate"`
+	AutoRenameResumes   bool     `json:"autoRenameResumes"`
 	CheckUpdatesOnStart bool     `json:"checkUpdatesOnStart"`
 	AutoBackupEnabled   bool     `json:"autoBackupEnabled"`
 	AutoBackupHours     int      `json:"autoBackupHours"`
 	BackupRetention     int      `json:"backupRetention"`
+	NavigationOrder     []string `json:"navigationOrder"`
+	HiddenNavigation    []string `json:"hiddenNavigation"`
 	AI                  AIConfig `json:"ai"`
+}
+
+var defaultNavigation = []string{
+	"overview", "applications", "targets", "tasks", "interviews", "offers",
+	"resumes", "profile", "ai", "tools", "settings",
 }
 
 type Manager struct {
@@ -51,10 +61,14 @@ func Defaults() Config {
 		WorkspaceName:       DefaultWorkspaceName,
 		Theme:               "bright",
 		OpenBrowserOnStart:  true,
+		ResumeNameTemplate:  DefaultResumeNameTemplate,
+		AutoRenameResumes:   true,
 		CheckUpdatesOnStart: true,
 		AutoBackupEnabled:   true,
 		AutoBackupHours:     24,
 		BackupRetention:     14,
+		NavigationOrder:     append([]string(nil), defaultNavigation...),
+		HiddenNavigation:    []string{},
 		AI: AIConfig{
 			Mode:                 "direct",
 			BaseURL:              "https://api.deepseek.com",
@@ -135,9 +149,22 @@ func (c *Config) normalize() {
 	if c.WorkspaceName == "" {
 		c.WorkspaceName = DefaultWorkspaceName
 	}
-	if c.Theme != "soft" {
+	c.ResumeNameTemplate = strings.TrimSpace(c.ResumeNameTemplate)
+	if c.ResumeNameTemplate == "" {
+		c.ResumeNameTemplate = DefaultResumeNameTemplate
+	}
+	if len([]rune(c.ResumeNameTemplate)) > 120 {
+		c.ResumeNameTemplate = string([]rune(c.ResumeNameTemplate)[:120])
+	}
+	switch c.Theme {
+	case "bright", "paper", "dark":
+	case "soft":
+		c.Theme = "paper"
+	default:
 		c.Theme = "bright"
 	}
+	c.NavigationOrder = normalizeNavigationOrder(c.NavigationOrder)
+	c.HiddenNavigation = normalizeHiddenNavigation(c.HiddenNavigation)
 	if c.AutoBackupHours < 1 || c.AutoBackupHours > 24*90 {
 		c.AutoBackupHours = 24
 	}
@@ -156,6 +183,46 @@ func (c *Config) normalize() {
 	if c.AI.Model == "" || c.AI.Model == "deepseek-chat" || c.AI.Model == "deepseek-reasoner" {
 		c.AI.Model = "deepseek-v4-flash"
 	}
+}
+
+func normalizeNavigationOrder(input []string) []string {
+	allowed := make(map[string]bool, len(defaultNavigation))
+	for _, key := range defaultNavigation {
+		allowed[key] = true
+	}
+	seen := make(map[string]bool, len(defaultNavigation))
+	result := make([]string, 0, len(defaultNavigation))
+	for _, key := range input {
+		key = strings.TrimSpace(key)
+		if allowed[key] && !seen[key] {
+			result = append(result, key)
+			seen[key] = true
+		}
+	}
+	for _, key := range defaultNavigation {
+		if !seen[key] {
+			result = append(result, key)
+		}
+	}
+	return result
+}
+
+func normalizeHiddenNavigation(input []string) []string {
+	allowed := make(map[string]bool, len(defaultNavigation))
+	for _, key := range defaultNavigation {
+		allowed[key] = true
+	}
+	protected := map[string]bool{"overview": true, "applications": true, "settings": true}
+	seen := make(map[string]bool, len(input))
+	result := make([]string, 0, len(input))
+	for _, key := range input {
+		key = strings.TrimSpace(key)
+		if allowed[key] && !protected[key] && !seen[key] {
+			result = append(result, key)
+			seen[key] = true
+		}
+	}
+	return result
 }
 
 func loadEnv(path string) error {

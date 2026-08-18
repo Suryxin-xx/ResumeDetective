@@ -1,20 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BriefcaseBusiness, Building2, CalendarCheck2, FileText, LayoutDashboard, ListTodo,
-  MessageSquareText, Settings, Sparkles, Target, Wrench, Plus, PanelLeftClose, PanelLeftOpen, UserRound,
+  MessageSquareText, Settings, Sparkles, Target, Wrench, Plus, PanelLeftClose, PanelLeftOpen, UserRound, BadgeDollarSign,
 } from "lucide-react";
 import { api } from "./api";
-import type { Application, Dashboard, Interview, JobTarget, Material, MigrationStatus, Profile, SettingsView, SystemInfo, Task } from "./types";
-import OverviewPage from "./pages/OverviewPage";
+import type { Application, Dashboard, Interview, JobTarget, Material, MigrationStatus, Offer, Profile, SettingsView, SystemInfo, Task } from "./types";
+import OverviewPage from "./pages/OverviewV2Page";
 import ApplicationsPage from "./pages/ApplicationsPage";
 import TargetsPage from "./pages/TargetsPage";
 import TasksPage from "./pages/TasksPage";
 import InterviewsPage from "./pages/InterviewsPage";
-import ResumesPage from "./pages/ResumesPage";
+import ResumesPage from "./pages/ResumesLibraryPage";
 import AIPage from "./pages/AIPage";
 import ToolsPage from "./pages/ToolsPage";
 import SettingsPage from "./pages/SettingsPage";
-import ProfilePage from "./pages/ProfilePage";
+import ProfilePage from "./pages/ProfileV2Page";
+import OffersPage from "./pages/OffersPage";
 
 export type DataState = {
   dashboard: Dashboard;
@@ -22,6 +23,7 @@ export type DataState = {
   targets: JobTarget[];
   tasks: Task[];
   interviews: Interview[];
+  offers: Offer[];
   profile: Profile;
   materials: Material[];
   settings: SettingsView | null;
@@ -31,12 +33,13 @@ export type DataState = {
 
 const emptyDashboard: Dashboard = { total: 0, active: 0, interview: 0, offers: 0, openTasks: 0, stageCounts: {}, demo: false };
 
-const navigation = [
+export const navigation = [
   ["overview", "总览", LayoutDashboard],
   ["applications", "投递管理", BriefcaseBusiness],
   ["targets", "意向清单", Target],
   ["tasks", "行动清单", ListTodo],
   ["interviews", "面试复盘", MessageSquareText],
+  ["offers", "Offer 对比", BadgeDollarSign],
   ["resumes", "简历汇总", FileText],
   ["profile", "个人资料库", UserRound],
   ["ai", "AI 助手", Sparkles],
@@ -55,16 +58,16 @@ export default function App() {
   const [newApplicationSignal, setNewApplicationSignal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [data, setData] = useState<DataState>({ dashboard: emptyDashboard, applications: [], targets: [], tasks: [], interviews: [], profile: {id:0,fullName:"",email:"",city:"",education:"",school:"",major:"",targetRole:"",summary:"",githubUrl:"",portfolioUrl:"",updatedAt:""}, materials: [], settings: null, migration: null, system: null });
+  const [data, setData] = useState<DataState>({ dashboard: emptyDashboard, applications: [], targets: [], tasks: [], interviews: [], offers: [], profile: {id:0,fullName:"",email:"",city:"",education:"",school:"",major:"",targetRole:"",summary:"",githubUrl:"",portfolioUrl:"",updatedAt:""}, materials: [], settings: null, migration: null, system: null });
 
   const refresh = useCallback(async () => {
     try {
-      const [dashboard, applications, targets, tasks, interviews, profile, materials, settings, migration, system] = await Promise.all([
+      const [dashboard, applications, targets, tasks, interviews, offers, profile, materials, settings, migration, system] = await Promise.all([
         api<Dashboard>("/dashboard"), api<Application[]>("/applications"), api<JobTarget[]>("/targets"),
-        api<Task[]>("/tasks"), api<Interview[]>("/interviews"), api<Profile>("/profile"), api<Material[]>("/materials"), api<SettingsView>("/settings"),
+        api<Task[]>("/tasks"), api<Interview[]>("/interviews"), api<Offer[]>("/offers"), api<Profile>("/profile"), api<Material[]>("/materials"), api<SettingsView>("/settings"),
         api<MigrationStatus>("/migration/status"), api<SystemInfo>("/system/info"),
       ]);
-      setData({ dashboard, applications, targets, tasks, interviews, profile, materials, settings, migration, system });
+      setData({ dashboard, applications, targets, tasks, interviews, offers, profile, materials, settings, migration, system });
       setError("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "无法连接本地服务");
@@ -83,12 +86,20 @@ export default function App() {
 
   const go = useCallback((next: string) => {
     window.location.hash = `/${next}`;
-    setPage(next);
+    setPage(next.split("?")[0]);
     window.scrollTo({ top: 0, behavior: "instant" });
   }, []);
 
   const today = useMemo(() => new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" }).format(new Date()), []);
   const workspaceName = data.settings?.config.workspaceName || "秋招工作台";
+  const visibleNavigation = useMemo(() => {
+    const configuredOrder = data.settings?.config.navigationOrder || navigation.map(([key]) => key);
+    const hidden = new Set(data.settings?.config.hiddenNavigation || []);
+    const byKey = new Map<string, (typeof navigation)[number]>(navigation.map((item) => [item[0], item]));
+    return configuredOrder
+      .map((key) => byKey.get(key))
+      .filter((item): item is (typeof navigation)[number] => Boolean(item) && !hidden.has(item![0]));
+  }, [data.settings?.config.hiddenNavigation, data.settings?.config.navigationOrder]);
 
   const pageProps = { data, refresh, go };
   let content;
@@ -97,6 +108,7 @@ export default function App() {
     case "targets": content = <TargetsPage {...pageProps} />; break;
     case "tasks": content = <TasksPage {...pageProps} />; break;
     case "interviews": content = <InterviewsPage {...pageProps} />; break;
+    case "offers": content = <OffersPage {...pageProps} />; break;
     case "resumes": content = <ResumesPage {...pageProps} />; break;
     case "profile": content = <ProfilePage {...pageProps} />; break;
     case "ai": content = <AIPage {...pageProps} />; break;
@@ -116,7 +128,7 @@ export default function App() {
           <div className="brand-copy"><strong>ResumeDetective</strong><span>{workspaceName}</span></div>
         </div>
         <nav aria-label="主导航">
-          {navigation.map(([key, label, Icon]) => (
+          {visibleNavigation.map(([key, label, Icon]) => (
             <button key={key} className={page === key ? "active" : ""} onClick={() => go(key)} title={sidebarCompact ? label : undefined}>
               <Icon size={18} strokeWidth={1.8} /><span>{label}</span>
               {key === "targets" && data.targets.filter((item) => item.status === "待投递").length > 0 && <em>{data.targets.filter((item) => item.status === "待投递").length}</em>}

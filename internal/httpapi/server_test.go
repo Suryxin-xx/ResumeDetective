@@ -51,6 +51,38 @@ func TestLocalHostAndApplicationAPI(t *testing.T) {
 	}
 }
 
+func TestInterviewCanBeEdited(t *testing.T) {
+	h := testHandler(t)
+	createApplication := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/applications", bytes.NewBufferString(`{"companyName":"示例","positionName":"后端"}`))
+	createApplication.Host = "127.0.0.1:8765"
+	applicationResponse := httptest.NewRecorder()
+	h.ServeHTTP(applicationResponse, createApplication)
+	if applicationResponse.Code != http.StatusCreated {
+		t.Fatalf("create application: %d %s", applicationResponse.Code, applicationResponse.Body.String())
+	}
+	createInterview := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/interviews", bytes.NewBufferString(`{"applicationId":1,"round":"一面","result":"待确认"}`))
+	createInterview.Host = "127.0.0.1:8765"
+	interviewResponse := httptest.NewRecorder()
+	h.ServeHTTP(interviewResponse, createInterview)
+	if interviewResponse.Code != http.StatusCreated {
+		t.Fatalf("create interview: %d %s", interviewResponse.Code, interviewResponse.Body.String())
+	}
+	updateInterview := httptest.NewRequest(http.MethodPatch, "http://127.0.0.1/api/interviews/1", bytes.NewBufferString(`{"applicationId":1,"round":"二面","result":"通过","summary":"项目追问深入"}`))
+	updateInterview.Host = "127.0.0.1:8765"
+	updateResponse := httptest.NewRecorder()
+	h.ServeHTTP(updateResponse, updateInterview)
+	if updateResponse.Code != http.StatusOK {
+		t.Fatalf("update interview: %d %s", updateResponse.Code, updateResponse.Body.String())
+	}
+	listInterviews := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/api/interviews", nil)
+	listInterviews.Host = "127.0.0.1:8765"
+	listResponse := httptest.NewRecorder()
+	h.ServeHTTP(listResponse, listInterviews)
+	if listResponse.Code != http.StatusOK || !bytes.Contains(listResponse.Body.Bytes(), []byte(`"round":"二面"`)) || !bytes.Contains(listResponse.Body.Bytes(), []byte(`"result":"通过"`)) {
+		t.Fatalf("list interviews: %d %s", listResponse.Code, listResponse.Body.String())
+	}
+}
+
 func TestRejectsForeignHost(t *testing.T) {
 	h := testHandler(t)
 	req := httptest.NewRequest(http.MethodGet, "http://evil.example/api/health", nil)
@@ -99,6 +131,13 @@ func TestUploadAndServeResume(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("upload: %d %s", rec.Code, rec.Body.String())
+	}
+	req = httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/applications/1/resume/rename", nil)
+	req.Host = "127.0.0.1:8765"
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"fileName":"简历公司-后端.pdf"`)) {
+		t.Fatalf("rename: %d %s", rec.Code, rec.Body.String())
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "http://127.0.0.1/resume/1", nil)

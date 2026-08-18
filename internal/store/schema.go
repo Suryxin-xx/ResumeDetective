@@ -1,6 +1,6 @@
 package store
 
-const SchemaVersion = 7
+const SchemaVersion = 8
 
 const schemaV6 = `
 CREATE TABLE IF NOT EXISTS resumes (
@@ -70,6 +70,17 @@ CREATE TABLE IF NOT EXISTS interviews (
     weak_points TEXT DEFAULT '', follow_up TEXT DEFAULT '', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS offers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, application_id INTEGER NOT NULL UNIQUE,
+    department TEXT DEFAULT '', location TEXT DEFAULT '', monthly_salary REAL DEFAULT 0,
+    salary_months REAL DEFAULT 12, bonus REAL DEFAULT 0, signing_bonus REAL DEFAULT 0,
+    other_compensation REAL DEFAULT 0, work_intensity INTEGER DEFAULT 3,
+    growth_score INTEGER DEFAULT 3, interest_score INTEGER DEFAULT 3,
+    location_score INTEGER DEFAULT 3, stability_score INTEGER DEFAULT 3,
+    decision_status TEXT DEFAULT '考虑中', deadline TEXT DEFAULT '', notes TEXT DEFAULT '',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS demo_records (
     entity_type TEXT NOT NULL,
     record_id INTEGER NOT NULL,
@@ -79,5 +90,6 @@ CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(current_statu
 CREATE INDEX IF NOT EXISTS idx_applications_updated ON applications(status_update_time DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_state_due ON job_tasks(state, due_date);
 CREATE INDEX IF NOT EXISTS idx_interviews_application ON interviews(application_id);
-PRAGMA user_version = 7;
+CREATE INDEX IF NOT EXISTS idx_offers_deadline ON offers(deadline);
+PRAGMA user_version = 8;
 `

@@ -36,6 +36,13 @@ func TestTaskAndInterviewWorkflow(t *testing.T) {
 	if err != nil || len(interviews) != 1 || interviews[0].CompanyName != "流程公司" {
 		t.Fatalf("interviews=%#v err=%v", interviews, err)
 	}
+	if err := st.UpdateInterview(ctx, interviewID, CreateInterviewInput{ApplicationID: appID, Round: "二面", Result: "通过", Summary: "项目追问深入", Questions: "缓存一致性", WeakPoints: "消息队列", FollowUp: "复盘项目"}); err != nil {
+		t.Fatal(err)
+	}
+	interviews, err = st.ListInterviews(ctx)
+	if err != nil || len(interviews) != 1 || interviews[0].Round != "二面" || interviews[0].Result != "通过" || interviews[0].Summary != "项目追问深入" {
+		t.Fatalf("updated interviews=%#v err=%v", interviews, err)
+	}
 	if err := st.DeleteInterview(ctx, interviewID); err != nil {
 		t.Fatal(err)
 	}

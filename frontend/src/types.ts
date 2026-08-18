@@ -73,6 +73,29 @@ export type Interview = {
   createdAt: string;
 };
 
+export type Offer = {
+  id: number;
+  applicationId: number;
+  companyName: string;
+  positionName: string;
+  department: string;
+  location: string;
+  monthlySalary: number;
+  salaryMonths: number;
+  bonus: number;
+  signingBonus: number;
+  otherCompensation: number;
+  workIntensity: number;
+  growthScore: number;
+  interestScore: number;
+  locationScore: number;
+  stabilityScore: number;
+  decisionStatus: string;
+  deadline: string;
+  notes: string;
+  updatedAt: string;
+};
+
 export type AIConfig = {
   mode: "direct" | "reasonix";
   baseUrl: string;
@@ -85,13 +108,17 @@ export type AIConfig = {
 export type AppConfig = {
   port: number;
   workspaceName: string;
-  theme: "bright" | "soft";
+  theme: "bright" | "paper" | "dark";
   openBrowserOnStart: boolean;
   startAtLogin: boolean;
+  resumeNameTemplate: string;
+  autoRenameResumes: boolean;
   checkUpdatesOnStart: boolean;
   autoBackupEnabled: boolean;
   autoBackupHours: number;
   backupRetention: number;
+  navigationOrder: string[];
+  hiddenNavigation: string[];
   ai: AIConfig;
 };
 

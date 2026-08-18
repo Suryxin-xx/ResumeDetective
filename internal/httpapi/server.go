@@ -43,7 +43,7 @@ type Server struct {
 	pickDirectory func(context.Context) (string, error)
 }
 
-var Version = "4.1.0-dev"
+var Version = "4.2.0-dev"
 
 type Options struct {
 	Settings      *settings.Manager
@@ -68,6 +68,7 @@ func NewWithOptions(st *store.Store, web fs.FS, paths config.Paths, v3Dir string
 	mux.HandleFunc("PATCH /api/applications/{id}", s.updateApplication)
 	mux.HandleFunc("DELETE /api/applications/{id}", s.deleteApplication)
 	mux.HandleFunc("POST /api/applications/{id}/resume", s.uploadResume)
+	mux.HandleFunc("POST /api/applications/{id}/resume/rename", s.renameResume)
 	mux.HandleFunc("GET /resume/{id}", s.viewResume)
 	mux.HandleFunc("POST /api/backups", s.createBackup)
 	mux.HandleFunc("DELETE /api/demo", s.clearDemo)
@@ -103,7 +104,11 @@ func NewWithOptions(st *store.Store, web fs.FS, paths config.Paths, v3Dir string
 	mux.HandleFunc("DELETE /api/tasks/{id}", s.deleteTask)
 	mux.HandleFunc("GET /api/interviews", s.listInterviews)
 	mux.HandleFunc("POST /api/interviews", s.createInterview)
+	mux.HandleFunc("PATCH /api/interviews/{id}", s.updateInterview)
 	mux.HandleFunc("DELETE /api/interviews/{id}", s.deleteInterview)
+	mux.HandleFunc("GET /api/offers", s.listOffers)
+	mux.HandleFunc("PUT /api/offers", s.upsertOffer)
+	mux.HandleFunc("DELETE /api/offers/{id}", s.deleteOffer)
 	mux.HandleFunc("/", s.static)
 	return s.securityHeaders(s.localOnly(mux))
 }
@@ -215,12 +220,31 @@ func (s *Server) uploadResume(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "简历仅支持 PDF、DOC 或 DOCX")
 		return
 	}
-	temp, err := os.CreateTemp(s.resumesDir, fmt.Sprintf("application-%d-*%s", id, ext))
+	app, err := s.store.GetApplication(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	baseName := sanitizeResumeName(strings.TrimSuffix(filepath.Base(header.Filename), filepath.Ext(header.Filename)))
+	if s.settings != nil {
+		cfg := s.settings.Get()
+		if cfg.AutoRenameResumes {
+			baseName = renderResumeName(cfg.ResumeNameTemplate, app, time.Now())
+		}
+	}
+	if baseName == "" {
+		baseName = renderResumeName(settings.DefaultResumeNameTemplate, app, time.Now())
+	}
+	tempName, err := availableResumePath(s.resumesDir, baseName, ext, "")
 	if err != nil {
 		s.internalError(w, r, err)
 		return
 	}
-	tempName := temp.Name()
+	temp, err := os.OpenFile(tempName, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
 	keep := false
 	defer func() {
 		_ = temp.Close()
@@ -251,6 +275,56 @@ func (s *Server) uploadResume(w http.ResponseWriter, r *http.Request) {
 	keep = true
 	s.syncApplicationWorkbook(r.Context())
 	writeJSON(w, http.StatusCreated, map[string]bool{"ok": true})
+}
+
+func (s *Server) renameResume(w http.ResponseWriter, r *http.Request) {
+	id, err := store.ParseID(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	app, err := s.store.GetApplication(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	current, err := s.store.ResumePath(r.Context(), id)
+	if err != nil || strings.TrimSpace(current) == "" {
+		writeError(w, http.StatusBadRequest, "该投递尚未绑定简历")
+		return
+	}
+	if !pathInsideDirectory(s.resumesDir, current) {
+		writeError(w, http.StatusBadRequest, "为保护外部文件，只能重命名 data/resumes 内的简历")
+		return
+	}
+	if info, statErr := os.Stat(current); statErr != nil || !info.Mode().IsRegular() {
+		writeError(w, http.StatusBadRequest, "简历文件不存在或不可访问")
+		return
+	}
+	template := settings.DefaultResumeNameTemplate
+	if s.settings != nil {
+		template = s.settings.Get().ResumeNameTemplate
+	}
+	next, err := availableResumePath(s.resumesDir, renderResumeName(template, app, time.Now()), strings.ToLower(filepath.Ext(current)), current)
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	if filepath.Clean(next) == filepath.Clean(current) {
+		writeJSON(w, http.StatusOK, map[string]any{"renamed": false, "fileName": filepath.Base(current)})
+		return
+	}
+	if err := os.Rename(current, next); err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	if err := s.store.ReplaceResumePath(r.Context(), id, next); err != nil {
+		_ = os.Rename(next, current)
+		s.internalError(w, r, err)
+		return
+	}
+	s.syncApplicationWorkbook(r.Context())
+	writeJSON(w, http.StatusOK, map[string]any{"renamed": true, "fileName": filepath.Base(next)})
 }
 
 func (s *Server) viewResume(w http.ResponseWriter, r *http.Request) {
@@ -745,6 +819,23 @@ func (s *Server) createInterview(w http.ResponseWriter, r *http.Request) {
 	s.syncApplicationWorkbook(r.Context())
 	writeJSON(w, http.StatusCreated, map[string]int64{"id": id})
 }
+func (s *Server) updateInterview(w http.ResponseWriter, r *http.Request) {
+	id, err := store.ParseID(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var in store.CreateInterviewInput
+	if err := decodeJSON(w, r, &in); err != nil {
+		return
+	}
+	if err := s.store.UpdateInterview(r.Context(), id, in); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.syncApplicationWorkbook(r.Context())
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
 func (s *Server) deleteInterview(w http.ResponseWriter, r *http.Request) {
 	id, err := store.ParseID(r.PathValue("id"))
 	if err != nil {
@@ -756,6 +847,41 @@ func (s *Server) deleteInterview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.syncApplicationWorkbook(r.Context())
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (s *Server) listOffers(w http.ResponseWriter, r *http.Request) {
+	items, err := s.store.ListOffers(r.Context())
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) upsertOffer(w http.ResponseWriter, r *http.Request) {
+	var in store.UpsertOfferInput
+	if err := decodeJSON(w, r, &in); err != nil {
+		return
+	}
+	id, err := s.store.UpsertOffer(r.Context(), in)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int64{"id": id})
+}
+
+func (s *Server) deleteOffer(w http.ResponseWriter, r *http.Request) {
+	id, err := store.ParseID(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.store.DeleteOffer(r.Context(), id); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 

@@ -152,5 +152,25 @@
       "weakPoints": "量化结果还不够具体。",
       "followUp": "补充进度偏差与改进指标。"
     }
+  ],
+  "offers": [
+    {
+      "applicationCompany": "澄川数据",
+      "department": "商业分析中心",
+      "location": "北京",
+      "monthlySalary": 24000,
+      "salaryMonths": 14,
+      "bonus": 18000,
+      "signingBonus": 10000,
+      "otherCompensation": 0,
+      "workIntensity": 3,
+      "growthScore": 4,
+      "interestScore": 4,
+      "locationScore": 3,
+      "stabilityScore": 4,
+      "decisionStatus": "考虑中",
+      "deadline": "2026-08-31",
+      "notes": "虚构演示数据：关注培养路径、绩效奖金口径与试用期规则。"
+    }
   ]
 }

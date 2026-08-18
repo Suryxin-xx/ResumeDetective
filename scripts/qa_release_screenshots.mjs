@@ -47,7 +47,9 @@ await capture("applications", "投递管理", "v4-applications.png");
 await capture("targets", "意向清单", "v4-targets.png");
 await capture("tasks", "行动清单", "v4-tasks.png");
 await capture("interviews", "面试复盘", "v4-interviews.png");
-await capture("profile", "个人资料与经历库", "v4-profile.png");
+await capture("offers", "Offer 对比", "v4-offers.png");
+await capture("resumes", "简历汇总", "v4-resumes.png");
+await capture("profile", "个人资料库", "v4-profile.png");
 await capture("ai", "AI 求职助手", "v4-ai.png");
 await capture("settings", "设置", "v4-settings.png");
 

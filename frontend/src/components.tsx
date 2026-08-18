@@ -1,11 +1,11 @@
 import type { PropsWithChildren, ReactNode } from "react";
 import { X } from "lucide-react";
 
-export function PageHeader({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: ReactNode }) {
+export function PageHeader({ eyebrow, title, description, action }: { eyebrow?: string; title: string; description: string; action?: ReactNode }) {
   return (
     <header className="page-header">
       <div>
-        <p className="eyebrow">{eyebrow}</p>
+        {eyebrow && <p className="eyebrow">{eyebrow}</p>}
         <h1>{title}</h1>
         <p className="page-description">{description}</p>
       </div>
@@ -59,7 +59,7 @@ export function EmptyState({ title, description, action }: { title: string; desc
 const statusTone: Record<string, string> = {
   "已投递": "blue", "简历筛选": "indigo", "测评": "amber", "AI 面试": "violet", "笔试": "amber",
   "业务面试": "violet", "HR 面": "pink", "Offer": "green", "终止": "neutral", "待投递": "blue",
-  "待研究": "neutral", "暂不考虑": "neutral", "通过": "green", "未通过": "red", "待确认": "neutral",
+  "待研究": "neutral", "暂不考虑": "neutral", "通过": "green", "未通过": "red", "待确认": "neutral", "结果待通知": "neutral",
 };
 
 export function StatusBadge({ value }: { value: string }) {

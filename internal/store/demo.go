@@ -8,6 +8,7 @@ import (
 var demoTables = map[string]string{
 	"interview": "interviews", "task": "job_tasks", "application": "applications",
 	"resume": "resumes", "target": "job_targets", "material": "materials", "profile": "profile",
+	"offer": "offers",
 }
 
 func (s *Store) MarkDemo(ctx context.Context, entityType string, id int64) error {
@@ -34,7 +35,7 @@ func (s *Store) ClearDemo(ctx context.Context) error {
 		return err
 	}
 	defer tx.Rollback()
-	order := []string{"interview", "task", "application", "resume", "target", "material", "profile"}
+	order := []string{"offer", "interview", "task", "application", "resume", "target", "material", "profile"}
 	for _, kind := range order {
 		table := demoTables[kind]
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE id IN (SELECT record_id FROM demo_records WHERE entity_type=?)", kind); err != nil {

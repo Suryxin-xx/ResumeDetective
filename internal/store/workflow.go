@@ -159,6 +159,40 @@ func (s *Store) CreateInterview(ctx context.Context, in CreateInterviewInput) (i
 	return result.LastInsertId()
 }
 
+func (s *Store) UpdateInterview(ctx context.Context, id int64, in CreateInterviewInput) error {
+	if id < 1 {
+		return errors.New("面试记录不存在")
+	}
+	if in.ApplicationID < 1 {
+		return errors.New("请选择对应岗位")
+	}
+	if strings.TrimSpace(in.Round) == "" {
+		in.Round = "一面"
+	}
+	if strings.TrimSpace(in.Result) == "" {
+		in.Result = "待确认"
+	}
+	var applicationExists int
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM applications WHERE id=?", in.ApplicationID).Scan(&applicationExists); err != nil {
+		return err
+	}
+	if applicationExists == 0 {
+		return errors.New("对应岗位不存在")
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE interviews SET application_id=?,round=?,interview_time=?,summary=?,result=?,questions=?,weak_points=?,follow_up=? WHERE id=?`, in.ApplicationID, strings.TrimSpace(in.Round), strings.TrimSpace(in.InterviewTime), strings.TrimSpace(in.Summary), strings.TrimSpace(in.Result), strings.TrimSpace(in.Questions), strings.TrimSpace(in.WeakPoints), strings.TrimSpace(in.FollowUp), id)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed == 0 {
+		return errors.New("面试记录不存在")
+	}
+	return nil
+}
+
 func (s *Store) DeleteInterview(ctx context.Context, id int64) error {
 	result, err := s.db.ExecContext(ctx, "DELETE FROM interviews WHERE id=?", id)
 	if err != nil {

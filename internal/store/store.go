@@ -373,6 +373,29 @@ func (s *Store) SetResumePath(ctx context.Context, applicationID int64, filePath
 	return nil
 }
 
+// ReplaceResumePath updates every resume record that points at the same physical
+// file. This keeps shared resume bindings intact when the file is renamed.
+func (s *Store) ReplaceResumePath(ctx context.Context, applicationID int64, filePath string) error {
+	var current string
+	if err := s.db.QueryRowContext(ctx, `SELECT r.file_path FROM resumes r JOIN applications a ON a.resume_id=r.id WHERE a.id=?`, applicationID).Scan(&current); errors.Is(err, sql.ErrNoRows) {
+		return errors.New("投递记录不存在")
+	} else if err != nil {
+		return err
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE resumes SET file_path=? WHERE file_path=?`, filePath, current)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed == 0 {
+		return errors.New("简历关联不存在")
+	}
+	return nil
+}
+
 func (s *Store) ResumePath(ctx context.Context, applicationID int64) (string, error) {
 	var filePath string
 	err := s.db.QueryRowContext(ctx, `SELECT r.file_path FROM resumes r JOIN applications a ON a.resume_id=r.id WHERE a.id=?`, applicationID).Scan(&filePath)
@@ -409,7 +432,7 @@ func (s *Store) Backup(ctx context.Context, destination string) error {
 }
 
 func (s *Store) BusinessDataEmpty(ctx context.Context) (bool, error) {
-	tables := []string{"resumes", "applications", "materials", "profile", "job_targets", "application_attachments", "job_tasks", "interviews"}
+	tables := []string{"resumes", "applications", "materials", "profile", "job_targets", "application_attachments", "job_tasks", "interviews", "offers"}
 	total := 0
 	for _, table := range tables {
 		var count int
@@ -450,6 +473,8 @@ func (s *Store) ImportV3Snapshot(ctx context.Context, snapshot string) error {
 		return err
 	}
 	defer tx.Rollback()
+	// v3 快照中没有 offers 表。Offer 是 v4.2 新增的数据，旧版导入时由
+	// 当前数据库保留空表即可，不能尝试从旧快照读取，否则真实 v3 数据会导入失败。
 	for _, table := range []string{"resumes", "materials", "profile", "job_targets", "applications", "application_attachments", "job_tasks", "interviews"} {
 		if err := importSharedColumns(ctx, tx, table); err != nil {
 			return fmt.Errorf("导入表 %s: %w", table, err)

@@ -172,6 +172,7 @@ func TestImportV3SnapshotMapsSharedColumns(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, statement := range []string{
+		"DROP TABLE offers",
 		"ALTER TABLE resumes DROP COLUMN job_category", "ALTER TABLE resumes DROP COLUMN tags",
 		"ALTER TABLE applications DROP COLUMN stage_state", "ALTER TABLE applications DROP COLUMN applied_at",
 		"ALTER TABLE applications DROP COLUMN application_deadline", "ALTER TABLE applications DROP COLUMN next_action_due_at",

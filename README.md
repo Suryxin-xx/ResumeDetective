@@ -32,13 +32,14 @@
 | 模块 | 能做什么 |
 | --- | --- |
 | 投递管理 | 按招聘环节、状态、岗位类型、标签和关键词筛选；原位编辑并保留完整流转记录 |
-| 总览与行动 | 聚合今日待办、进行中岗位、面试、Offer 和最近状态变化 |
+| 总览与行动 | 用流程健康度、停滞岗位、阶段分布和最近变化判断推进重点，不用待办数量制造焦虑 |
 | 意向岗位 | 先保存公司、岗位和 JD，准备好后可一键转为正式投递 |
-| 简历与复盘 | 为每个岗位绑定简历，归档 JD，并记录每轮面试问题、结果与改进项 |
-| 个人资料库 | 集中维护教育、项目、实习、校园和获奖经历，为定制简历与 AI 分析复用 |
+| 简历与复盘 | 简历按真实文件版本归并并展示关联岗位；面试按时间线记录问题、结果与改进项 |
+| Offer 对比 | 记录薪资结构、奖金、签字费、地点、成长、强度、稳定性与截止日期，自动估算总包并横向比较 |
+| 个人资料库 | 以折叠分组维护教育、项目、实习、校园和获奖经历，为定制简历与 AI 分析复用 |
 | AI 辅助 | 可选 DeepSeek API 或 Reasonix CLI，用于 JD 匹配、简历建议和面试准备 |
 | Excel 镜像 | 自动生成 `data/秋招投递追踪.xlsx`，无需打开软件也能快速查看与筛选 |
-| 本地维护 | 托盘静默运行、登录自启、手动/定期备份、Python v3 数据迁移及 Release 更新 |
+| 本地维护 | 三套主题、可定制侧栏、托盘静默运行、登录自启、备份、Python v3 数据迁移及可信更新 |
 
 <table>
   <tr>
@@ -91,6 +92,10 @@ Get-Content .\ResumeDetective-windows-x64.zip.sha256
 ```
 
 新增、修改或删除投递，以及更新简历和面试记录后，程序会重新生成 Excel 镜像。SQLite 始终是唯一事实源，Excel 用于查看、筛选和备份，不建议直接回写。
+
+投递管理支持批量选中，将当前结果导出为 UTF-8 CSV，或生成只含公司、岗位、阶段、分类和日期的 PNG 分享图。分享图不会包含 JD、简历路径、个人资料或 API 配置。
+
+进入 Offer 后，可在独立的“Offer 对比”页面填写薪酬与决策信息。总包估算只计算明确填写的现金项目，评分仅作为回忆和比较辅助，不替代对合同条款、福利口径与风险的人工核对。
 
 ## 数据与安全
 
@@ -170,7 +175,7 @@ go run ./cmd/resumedetective --data-dir .\local-artifacts\dev-data --no-browser
 ### Windows 正式构建
 
 ```powershell
-.\scripts\atuo.bat -Version 4.1.0
+.\scripts\atuo.bat -Version 4.2.0
 ```
 
 构建入口依次执行仓库安全扫描、React/TypeScript 构建、Go 测试、`go vet`、Windows GUI EXE 构建、版本资源写入、虚构演示库生成、ZIP 压缩和 SHA-256 生成。
@@ -209,6 +214,7 @@ PDF 转换能力已拆分为独立项目，以减小 ResumeDetective 的体积�
 - Excel 镜像使用 [Excelize](https://github.com/xuri/excelize) 生成。
 - 产品与网页交互参考了 [xuuuu-cpu/offerFlow-llm-feature](https://github.com/xuuuu-cpu/offerFlow-llm-feature) 的部分思路；代码为本项目独立重构。
 - 视觉层级参考 [GitHub Primer](https://primer.style/) 与 [Microsoft Fluent 2](https://fluent2.microsoft.design/design-tokens) 的公开设计方法。
+- 信息架构与批量操作研究参考了 [JobSync](https://github.com/Gsync/jobsync)、[JobSentinel](https://github.com/cboyd0319/JobSentinel) 与 [JobNavigator](https://github.com/vesaias/JobNavigator) 的公开产品思路；未复制其业务代码。
 
 ## License
 
