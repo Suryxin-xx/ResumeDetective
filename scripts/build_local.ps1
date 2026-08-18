@@ -4,17 +4,24 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
-$goExe = "E:\Agent\Project\Job\.tools\go1.26.5\go\bin\go.exe"
-if (-not (Test-Path -LiteralPath $goExe)) {
-    $command = Get-Command go -ErrorAction SilentlyContinue
-    if (-not $command) { throw "Go was not found." }
+$command = Get-Command go -ErrorAction SilentlyContinue
+if ($command) {
     $goExe = $command.Source
+} elseif (Test-Path -LiteralPath "D:\Go\bin\go.exe") {
+    $goExe = "D:\Go\bin\go.exe"
+} else {
+    throw "Go was not found. Install Go or add its bin directory to PATH."
 }
 if (-not (Get-Command gcc -ErrorAction SilentlyContinue) -and (Test-Path -LiteralPath "D:\Mingw64\bin\gcc.exe")) {
     $env:PATH = "D:\Mingw64\bin;$env:PATH"
 }
 Push-Location $repoRoot
 try {
+    $goWorkspace = Join-Path $repoRoot "local-artifacts\go-build"
+    $env:GOPATH = Join-Path $goWorkspace "path"
+    $env:GOCACHE = Join-Path $goWorkspace "cache"
+    $env:GOTMPDIR = Join-Path $goWorkspace "tmp"
+    New-Item -ItemType Directory -Force -Path $env:GOPATH, $env:GOCACHE, $env:GOTMPDIR | Out-Null
     npm --prefix frontend run build
     if ($LASTEXITCODE -ne 0) { throw "Frontend build failed." }
     $env:CGO_ENABLED = "1"
