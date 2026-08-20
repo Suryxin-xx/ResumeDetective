@@ -33,7 +33,7 @@ import (
 	"github.com/Suryxin-xx/ResumeDetective/internal/webui"
 )
 
-var version = "4.3.0-dev"
+var version = "4.3.1-dev"
 
 func main() {
 	var dataDir string
@@ -125,6 +125,10 @@ func main() {
 	v3Dir := migrate.Discover("")
 	aiService := ai.New(st, manager, paths.DataDir)
 	updateService := update.New(version, paths.UpdatesDir)
+	updateService.NetworkConfig = func() update.NetworkConfig {
+		network := manager.Get().UpdateNetwork
+		return update.NetworkConfig{Mode: network.Mode, ProxyURL: network.ProxyURL}
+	}
 	autostartService := autostart.New("ResumeDetective")
 	httpapi.Version = version
 	handler := httpapi.NewWithOptions(st, files, paths, v3Dir, func() { requestAction("quit") }, logger, httpapi.Options{

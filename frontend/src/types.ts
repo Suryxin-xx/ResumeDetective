@@ -114,6 +114,7 @@ export type AppConfig = {
   resumeNameTemplate: string;
   autoRenameResumes: boolean;
   checkUpdatesOnStart: boolean;
+  updateNetwork: UpdateNetworkConfig;
   autoBackupEnabled: boolean;
   autoBackupHours: number;
   backupRetention: number;
@@ -123,6 +124,7 @@ export type AppConfig = {
 };
 
 export type SettingsView = { config: AppConfig; apiKeyConfigured: boolean; dataDir: string };
+export type UpdateNetworkConfig = { mode: "auto" | "system" | "env" | "custom" | "off"; proxyUrl: string };
 export type MigrationStatus = { available: boolean; sourceDir?: string; applications: number; reason: string };
 export type SystemInfo = { version: string; dataDir: string; developer: { name: string; email: string; repository: string } };
 

@@ -17,6 +17,9 @@
 
 <p align="center"><img src="screenshots/v4-overview.png" alt="ResumeDetective 总览页面" width="100%"></p>
 
+> [!TIP]
+> **v4.3.1 更新：** 改进国内网络下的版本检查与更新下载，支持自动检测、Windows/Clash 系统代理、环境变量代理以及自定义 HTTP、HTTPS、SOCKS5 代理；同时补充连接测试、中文故障诊断和慢速下载超时保护。设置页可随时切回强制直连，代理仅作用于更新器。
+
 ## 为什么做这个工具
 
 招聘网站负责投递，Excel 负责记结果，日历负责提醒，文件夹里放着不同版本的简历，面试问题又散落在笔记中。ResumeDetective 将这些信息围绕“一个岗位”关联起来，让你随时回答三个问题：
@@ -120,6 +123,18 @@ backups/                    # 自动和手动备份
 
 建议在升级或批量导入前，先进入设置页执行一次“立即备份”。
 
+### 更新网络与代理
+
+如果当前网络无法直连 GitHub，可在“设置 → 更新 → 更新网络”选择：
+
+- 自动检测：依次使用 `HTTP_PROXY` / `HTTPS_PROXY`、Windows/Clash 写入的系统代理，再尝试直连；
+- Windows/Clash 系统代理：读取当前用户的 WinINET 固定代理配置；
+- 环境变量代理：适合开发终端或统一配置过代理变量的环境；
+- 自定义本地代理：填写代理软件的 HTTP、HTTPS 或 SOCKS5 地址，例如 Clash 的 `http://127.0.0.1:7890`；
+- 强制直连。
+
+“测试连接”只访问 GitHub 的公开 Release API，不会发送求职数据。代理设置只作用于更新器，不改变 DeepSeek API 连接。下载仍必须通过可信 HTTPS 域名、大小限制与 Release SHA-256 摘要校验；不开 TUN 也可以使用明确配置的本地代理端口。
+
 ## AI 配置
 
 AI 功能完全可选，不配置也不影响投递管理、复盘、备份和 Excel 镜像。为让默认侧栏更专注，新用户的“岗位准备”和“小工具”默认隐藏，可在“设置 → 侧栏”随时打开。
@@ -175,7 +190,7 @@ go run ./cmd/resumedetective --data-dir .\local-artifacts\dev-data --no-browser
 ### Windows 正式构建
 
 ```powershell
-.\scripts\atuo.bat -Version 4.3.0
+.\scripts\atuo.bat -Version 4.3.1
 ```
 
 构建入口依次执行仓库安全扫描、React/TypeScript 构建、Go 测试、`go vet`、Windows GUI EXE 构建、版本资源写入、虚构演示库生成、ZIP 压缩和 SHA-256 生成。

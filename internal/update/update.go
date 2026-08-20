@@ -75,17 +75,27 @@ type Service struct {
 	APIBase        string
 	WebBase        string
 	Client         *http.Client
+	NetworkConfig  func() NetworkConfig
 }
 
 func New(currentVersion, updatesDir string) *Service {
 	client := &http.Client{Timeout: 45 * time.Second}
-	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if len(via) > 8 || req.URL == nil || req.URL.Scheme != "https" || !trustedHost(req.URL.Hostname()) {
-			return errors.New("更新下载重定向到了不受信任的地址")
-		}
-		return nil
-	}
+	client.CheckRedirect = secureRedirect
 	return &Service{CurrentVersion: currentVersion, UpdatesDir: updatesDir, APIBase: "https://api.github.com", WebBase: "https://github.com", Client: client}
+}
+
+func (s *Service) client() (*http.Client, error) {
+	return s.clientWithTimeout(45 * time.Second)
+}
+
+func (s *Service) clientWithTimeout(timeout time.Duration) (*http.Client, error) {
+	if s.NetworkConfig == nil {
+		clone := *s.Client
+		clone.Timeout = timeout
+		return &clone, nil
+	}
+	client, _, err := newHTTPClient(s.NetworkConfig(), timeout)
+	return client, err
 }
 
 func (s *Service) Check(ctx context.Context, repository string) (Info, error) {
@@ -100,18 +110,22 @@ func (s *Service) Check(ctx context.Context, repository string) (Info, error) {
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
 	req.Header.Set("User-Agent", "ResumeDetective-Updater/4")
-	resp, err := s.Client.Do(req)
+	client, err := s.client()
+	if err != nil {
+		return Info{}, err
+	}
+	resp, err := client.Do(req)
 	var release releasePayload
 	fallback := false
 	if err != nil {
-		release, err = s.releasePageFallback(ctx, repository)
+		release, err = s.releasePageFallback(ctx, client, repository)
 		fallback = true
 		if err != nil {
 			return Info{}, err
 		}
 	} else if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
 		defer resp.Body.Close()
-		release, err = s.releasePageFallback(ctx, repository)
+		release, err = s.releasePageFallback(ctx, client, repository)
 		fallback = true
 		if err != nil {
 			return Info{}, err
@@ -160,14 +174,14 @@ func (s *Service) Check(ctx context.Context, repository string) (Info, error) {
 	return info, nil
 }
 
-func (s *Service) releasePageFallback(ctx context.Context, repository string) (releasePayload, error) {
+func (s *Service) releasePageFallback(ctx context.Context, client *http.Client, repository string) (releasePayload, error) {
 	endpoint := strings.TrimRight(s.WebBase, "/") + "/" + repository + "/releases/latest"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return releasePayload{}, err
 	}
 	req.Header.Set("User-Agent", "ResumeDetective-Updater/4")
-	response, err := s.Client.Do(req)
+	response, err := client.Do(req)
 	if err != nil {
 		return releasePayload{}, fmt.Errorf("GitHub API 已限流，发布页检查也失败: %w", err)
 	}
@@ -213,7 +227,11 @@ func (s *Service) Download(ctx context.Context) (Download, error) {
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
 	req.Header.Set("Accept", "application/octet-stream")
 	req.Header.Set("User-Agent", "ResumeDetective-Updater/4")
-	resp, err := s.Client.Do(req)
+	client, err := s.clientWithTimeout(10 * time.Minute)
+	if err != nil {
+		return Download{}, err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return Download{}, fmt.Errorf("下载更新失败: %w", err)
 	}
@@ -342,7 +360,11 @@ func (s *Service) releaseAsset(ctx context.Context) (Info, releasePayload, *Asse
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
 	req.Header.Set("User-Agent", "ResumeDetective-Updater/4")
-	resp, err := s.Client.Do(req)
+	client, err := s.client()
+	if err != nil {
+		return Info{}, releasePayload{}, nil, err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return Info{}, releasePayload{}, nil, err
 	}

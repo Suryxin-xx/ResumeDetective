@@ -43,7 +43,7 @@ type Server struct {
 	pickDirectory func(context.Context) (string, error)
 }
 
-var Version = "4.3.0-dev"
+var Version = "4.3.1-dev"
 
 type Options struct {
 	Settings      *settings.Manager
@@ -91,6 +91,7 @@ func NewWithOptions(st *store.Store, web fs.FS, paths config.Paths, v3Dir string
 	mux.HandleFunc("PATCH /api/materials/{id}", s.updateMaterial)
 	mux.HandleFunc("DELETE /api/materials/{id}", s.deleteMaterial)
 	mux.HandleFunc("GET /api/updates/check", s.checkUpdate)
+	mux.HandleFunc("POST /api/updates/test-network", s.testUpdateNetwork)
 	mux.HandleFunc("POST /api/updates/download", s.downloadUpdate)
 	mux.HandleFunc("POST /api/updates/install", s.installUpdate)
 	mux.HandleFunc("GET /api/targets", s.listTargets)
@@ -642,11 +643,37 @@ func (s *Server) checkUpdate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, info)
 }
 
+func (s *Server) testUpdateNetwork(w http.ResponseWriter, r *http.Request) {
+	if s.updater == nil {
+		writeError(w, http.StatusServiceUnavailable, "更新服务未启用")
+		return
+	}
+	var in struct {
+		Mode     string `json:"mode"`
+		ProxyURL string `json:"proxyUrl"`
+	}
+	if err := decodeJSON(w, r, &in); err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	result, err := s.updater.TestNetwork(ctx, update.NetworkConfig{Mode: in.Mode, ProxyURL: in.ProxyURL})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 func (s *Server) downloadUpdate(w http.ResponseWriter, r *http.Request) {
 	if s.updater == nil {
 		writeError(w, http.StatusServiceUnavailable, "更新服务未启用")
 		return
 	}
+	// The server-wide write deadline is intentionally short for ordinary local
+	// requests. A verified release download can legitimately take several
+	// minutes, so extend only this response instead of weakening every route.
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(11 * time.Minute))
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 	defer cancel()
 	download, err := s.updater.Download(ctx)

@@ -30,3 +30,16 @@ func TestResumeNamingDefaultsAndLimit(t *testing.T) {
 		t.Fatalf("empty template should use default, got %q", cfg.ResumeNameTemplate)
 	}
 }
+
+func TestUpdateNetworkDefaultsAndNormalization(t *testing.T) {
+	cfg := Defaults()
+	if cfg.UpdateNetwork.Mode != "auto" || cfg.UpdateNetwork.ProxyURL != "" {
+		t.Fatalf("unexpected update network defaults: %#v", cfg.UpdateNetwork)
+	}
+	cfg.UpdateNetwork.Mode = " UNKNOWN "
+	cfg.UpdateNetwork.ProxyURL = "  http://127.0.0.1:7890  "
+	cfg.normalize()
+	if cfg.UpdateNetwork.Mode != "auto" || cfg.UpdateNetwork.ProxyURL != "http://127.0.0.1:7890" {
+		t.Fatalf("update network was not normalized: %#v", cfg.UpdateNetwork)
+	}
+}

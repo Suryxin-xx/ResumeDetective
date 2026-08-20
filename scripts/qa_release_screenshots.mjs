@@ -24,10 +24,15 @@ const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, de
 const errors = [];
 page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
 
-async function capture(route, heading, filename) {
+async function capture(route, heading, filename, anchor = "") {
   await page.goto(`http://127.0.0.1:${port}/#/${route}`, { waitUntil: "networkidle" });
   await page.getByRole("heading", { name: heading }).waitFor();
-  await page.evaluate(() => window.scrollTo(0, 0));
+  if (anchor) {
+    await page.locator(anchor).scrollIntoViewIfNeeded();
+    await page.waitForTimeout(120);
+  } else {
+    await page.evaluate(() => window.scrollTo(0, 0));
+  }
   await page.screenshot({ path: path.join(output, filename), fullPage: false });
 }
 
@@ -51,7 +56,7 @@ await capture("offers", "Offer 对比", "v4-offers.png");
 await capture("resumes", "简历汇总", "v4-resumes.png");
 await capture("profile", "个人资料库", "v4-profile.png");
 await capture("ai", "岗位准备助手", "v4-ai.png");
-await capture("settings", "设置", "v4-settings.png");
+await capture("settings", "设置", "v4-settings.png", "#updates");
 
 if (errors.length) throw new Error(`browser console errors: ${errors.join(" | ")}`);
 await browser.close();

@@ -26,21 +26,27 @@ type AIConfig struct {
 	CheckReasonixUpdates bool   `json:"checkReasonixUpdates"`
 }
 
+type UpdateNetworkConfig struct {
+	Mode     string `json:"mode"`
+	ProxyURL string `json:"proxyUrl"`
+}
+
 type Config struct {
-	Port                int      `json:"port"`
-	WorkspaceName       string   `json:"workspaceName"`
-	Theme               string   `json:"theme"`
-	OpenBrowserOnStart  bool     `json:"openBrowserOnStart"`
-	StartAtLogin        bool     `json:"startAtLogin"`
-	ResumeNameTemplate  string   `json:"resumeNameTemplate"`
-	AutoRenameResumes   bool     `json:"autoRenameResumes"`
-	CheckUpdatesOnStart bool     `json:"checkUpdatesOnStart"`
-	AutoBackupEnabled   bool     `json:"autoBackupEnabled"`
-	AutoBackupHours     int      `json:"autoBackupHours"`
-	BackupRetention     int      `json:"backupRetention"`
-	NavigationOrder     []string `json:"navigationOrder"`
-	HiddenNavigation    []string `json:"hiddenNavigation"`
-	AI                  AIConfig `json:"ai"`
+	Port                int                 `json:"port"`
+	WorkspaceName       string              `json:"workspaceName"`
+	Theme               string              `json:"theme"`
+	OpenBrowserOnStart  bool                `json:"openBrowserOnStart"`
+	StartAtLogin        bool                `json:"startAtLogin"`
+	ResumeNameTemplate  string              `json:"resumeNameTemplate"`
+	AutoRenameResumes   bool                `json:"autoRenameResumes"`
+	CheckUpdatesOnStart bool                `json:"checkUpdatesOnStart"`
+	UpdateNetwork       UpdateNetworkConfig `json:"updateNetwork"`
+	AutoBackupEnabled   bool                `json:"autoBackupEnabled"`
+	AutoBackupHours     int                 `json:"autoBackupHours"`
+	BackupRetention     int                 `json:"backupRetention"`
+	NavigationOrder     []string            `json:"navigationOrder"`
+	HiddenNavigation    []string            `json:"hiddenNavigation"`
+	AI                  AIConfig            `json:"ai"`
 }
 
 var defaultNavigation = []string{
@@ -64,6 +70,7 @@ func Defaults() Config {
 		ResumeNameTemplate:  DefaultResumeNameTemplate,
 		AutoRenameResumes:   true,
 		CheckUpdatesOnStart: true,
+		UpdateNetwork:       UpdateNetworkConfig{Mode: "auto"},
 		AutoBackupEnabled:   true,
 		AutoBackupHours:     24,
 		BackupRetention:     14,
@@ -183,6 +190,16 @@ func (c *Config) normalize() {
 	c.AI.Model = strings.TrimSpace(c.AI.Model)
 	if c.AI.Model == "" || c.AI.Model == "deepseek-chat" || c.AI.Model == "deepseek-reasoner" {
 		c.AI.Model = "deepseek-v4-flash"
+	}
+	c.UpdateNetwork.Mode = strings.ToLower(strings.TrimSpace(c.UpdateNetwork.Mode))
+	switch c.UpdateNetwork.Mode {
+	case "auto", "system", "env", "custom", "off":
+	default:
+		c.UpdateNetwork.Mode = "auto"
+	}
+	c.UpdateNetwork.ProxyURL = strings.TrimSpace(c.UpdateNetwork.ProxyURL)
+	if len(c.UpdateNetwork.ProxyURL) > 512 {
+		c.UpdateNetwork.ProxyURL = c.UpdateNetwork.ProxyURL[:512]
 	}
 }
 
