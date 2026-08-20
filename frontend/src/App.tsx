@@ -42,7 +42,7 @@ export const navigation = [
   ["offers", "Offer 对比", BadgeDollarSign],
   ["resumes", "简历汇总", FileText],
   ["profile", "个人资料库", UserRound],
-  ["ai", "AI 助手", Sparkles],
+  ["ai", "岗位准备", Sparkles],
   ["tools", "配套工具", Wrench],
   ["settings", "设置", Settings],
 ] as const;
@@ -138,7 +138,7 @@ export default function App() {
         </nav>
         <div className="sidebar-footer">
           <span className="running-dot" />
-          <div><strong>本机服务运行中</strong><small>127.0.0.1:{data.settings?.config.port || 8765}</small></div>
+          <div><strong>本机服务运行中</strong><small>127.0.0.1:{window.location.port || data.settings?.config.port || 8765}</small></div>
           <button className="sidebar-toggle" aria-label="切换侧栏" onClick={() => setSidebarCompact((value) => !value)}>{sidebarCompact ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button>
         </div>
       </aside>

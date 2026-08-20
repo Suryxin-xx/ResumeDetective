@@ -68,7 +68,8 @@ func Defaults() Config {
 		AutoBackupHours:     24,
 		BackupRetention:     14,
 		NavigationOrder:     append([]string(nil), defaultNavigation...),
-		HiddenNavigation:    []string{},
+		// 低频工具默认收进设置，保持首次使用时的侧栏简洁；用户可随时重新显示。
+		HiddenNavigation: []string{"ai", "tools"},
 		AI: AIConfig{
 			Mode:                 "direct",
 			BaseURL:              "https://api.deepseek.com",

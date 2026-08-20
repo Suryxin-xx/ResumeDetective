@@ -585,7 +585,9 @@ func (s *Store) Dashboard(ctx context.Context) (Dashboard, error) {
 		if !terminal[item.CurrentStatus] {
 			d.Active++
 		}
-		if strings.Contains(item.CurrentStatus, "面") {
+		// “AI 面试”属于测评环节；首页的“面试阶段”只统计真实业务/HR 面试。
+		// 这里必须与前端 groupedStatuses 的定义保持一致，避免首页数量与筛选结果不同。
+		if item.CurrentStatus == "业务面试" || item.CurrentStatus == "HR 面" {
 			d.Interview++
 		}
 		if item.CurrentStatus == "Offer" {

@@ -1,9 +1,14 @@
 param(
-    [string]$Version = "4.2.0-dev"
+    [string]$Version = "4.3.0-dev"
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+$package = Get-Content -LiteralPath (Join-Path $repoRoot "frontend\package.json") -Raw | ConvertFrom-Json
+$baseVersion = $Version -replace '-.*$', ''
+if ($package.version -ne $baseVersion) {
+    throw "Version mismatch: local build=$Version, package.json=$($package.version)."
+}
 $command = Get-Command go -ErrorAction SilentlyContinue
 if ($command) {
     $goExe = $command.Source
@@ -17,7 +22,8 @@ if (-not (Get-Command gcc -ErrorAction SilentlyContinue) -and (Test-Path -Litera
 }
 Push-Location $repoRoot
 try {
-    $goWorkspace = Join-Path $repoRoot "local-artifacts\go-build"
+    # Keep caches outside the Go module so `go test ./...` never walks a nested GOPATH.
+    $goWorkspace = Join-Path $env:TEMP "ResumeDetective-go-build"
     $env:GOPATH = Join-Path $goWorkspace "path"
     $env:GOCACHE = Join-Path $goWorkspace "cache"
     $env:GOTMPDIR = Join-Path $goWorkspace "tmp"

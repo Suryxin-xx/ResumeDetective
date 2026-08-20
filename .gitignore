@@ -3,6 +3,7 @@
 /backups/
 /releases/
 /ResumeDetective.exe
+/ResumeDetective.exe~
 /.resumedetective.local.json
 /local-artifacts/
 *.db

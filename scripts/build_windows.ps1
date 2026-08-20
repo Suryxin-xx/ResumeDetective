@@ -1,12 +1,18 @@
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = "4.2.0",
+    [string]$Version = "4.3.0",
     [string]$ReleaseRoot = "",
     [switch]$ArchiveExisting
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+$package = Get-Content -LiteralPath (Join-Path $repoRoot "frontend\package.json") -Raw | ConvertFrom-Json
+$packageLockText = Get-Content -LiteralPath (Join-Path $repoRoot "frontend\package-lock.json") -Raw
+$packageLockVersion = [regex]::Match($packageLockText, '(?m)^  "version": "([^"]+)"').Groups[1].Value
+if ($package.version -ne $Version -or $packageLockVersion -ne $Version) {
+    throw "Version mismatch: release=$Version, package.json=$($package.version), package-lock.json=$packageLockVersion."
+}
 if (-not $ReleaseRoot) { $ReleaseRoot = Join-Path $repoRoot "releases\v$Version" }
 $ReleaseRoot = [System.IO.Path]::GetFullPath($ReleaseRoot)
 $releaseParent = [System.IO.Path]::GetFullPath((Split-Path -Parent $ReleaseRoot))
@@ -34,9 +40,9 @@ if (-not (Get-Command gcc -ErrorAction SilentlyContinue) -and (Test-Path -Litera
 if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) { throw "GCC was not found. Add MinGW bin to PATH." }
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { throw "Node.js/npm was not found." }
 
-# Keep build caches inside the repository's ignored local-artifacts directory.
-# This avoids depending on a writable global Go cache and keeps release inputs isolated.
-$goWorkspace = Join-Path $repoRoot "local-artifacts\go-build"
+# Keep caches outside the Go module. A repo-local GOPATH can be mistaken for source
+# by recursive Go package patterns and makes an otherwise healthy release fail.
+$goWorkspace = Join-Path $env:TEMP "ResumeDetective-go-build"
 $env:GOPATH = Join-Path $goWorkspace "path"
 $env:GOCACHE = Join-Path $goWorkspace "cache"
 $env:GOTMPDIR = Join-Path $goWorkspace "tmp"
@@ -52,9 +58,9 @@ try {
     }
     npm --prefix frontend run build
     if ($LASTEXITCODE -ne 0) { throw "Frontend build failed." }
-    & $goExe test ./...
+    & $goExe test ./cmd/... ./internal/...
     if ($LASTEXITCODE -ne 0) { throw "Go tests failed." }
-    & $goExe vet ./...
+    & $goExe vet ./cmd/... ./internal/...
     if ($LASTEXITCODE -ne 0) { throw "Go vet failed." }
 
     New-Item -ItemType Directory -Force -Path $payload | Out-Null

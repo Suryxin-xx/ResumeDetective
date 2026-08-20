@@ -150,6 +150,32 @@ func TestBackupCreatesConsistentDatabase(t *testing.T) {
 	}
 }
 
+func TestDashboardInterviewCountMatchesInterviewStage(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "dashboard.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	for _, status := range []string{"AI 面试", "业务面试", "HR 面"} {
+		if _, err := st.CreateApplication(ctx, CreateApplicationInput{
+			CompanyName: "测试公司", PositionName: status, CurrentStatus: status,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dashboard, err := st.Dashboard(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dashboard.Interview != 2 {
+		t.Fatalf("interview=%d, want 2; AI 面试不应计入面试阶段", dashboard.Interview)
+	}
+	if dashboard.StageCounts["AI 面试"] != 1 {
+		t.Fatalf("AI 面试阶段计数丢失: %#v", dashboard.StageCounts)
+	}
+}
+
 func TestImportV3SnapshotMapsSharedColumns(t *testing.T) {
 	root := t.TempDir()
 	sourcePath := filepath.Join(root, "legacy.db")
