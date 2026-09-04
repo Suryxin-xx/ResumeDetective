@@ -1,6 +1,6 @@
 package store
 
-const SchemaVersion = 8
+const SchemaVersion = 9
 
 const schemaV6 = `
 CREATE TABLE IF NOT EXISTS resumes (
@@ -66,7 +66,8 @@ CREATE TABLE IF NOT EXISTS job_tasks (
 );
 CREATE TABLE IF NOT EXISTS interviews (
     id INTEGER PRIMARY KEY AUTOINCREMENT, application_id INTEGER NOT NULL, round TEXT NOT NULL DEFAULT '一面',
-    interview_time TEXT DEFAULT '', summary TEXT DEFAULT '', result TEXT DEFAULT '待确认', questions TEXT DEFAULT '',
+    interview_time TEXT DEFAULT '', interview_mode TEXT DEFAULT '', meeting_link TEXT DEFAULT '',
+    schedule_notes TEXT DEFAULT '', summary TEXT DEFAULT '', result TEXT DEFAULT '待确认', questions TEXT DEFAULT '',
     weak_points TEXT DEFAULT '', follow_up TEXT DEFAULT '', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE
 );
@@ -91,5 +92,5 @@ CREATE INDEX IF NOT EXISTS idx_applications_updated ON applications(status_updat
 CREATE INDEX IF NOT EXISTS idx_tasks_state_due ON job_tasks(state, due_date);
 CREATE INDEX IF NOT EXISTS idx_interviews_application ON interviews(application_id);
 CREATE INDEX IF NOT EXISTS idx_offers_deadline ON offers(deadline);
-PRAGMA user_version = 8;
+PRAGMA user_version = 9;
 `

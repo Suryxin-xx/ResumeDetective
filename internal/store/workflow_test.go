@@ -28,13 +28,16 @@ func TestTaskAndInterviewWorkflow(t *testing.T) {
 	if err != nil || len(tasks) != 1 || tasks[0].State != "done" {
 		t.Fatalf("tasks=%#v err=%v", tasks, err)
 	}
-	interviewID, err := st.CreateInterview(ctx, CreateInterviewInput{ApplicationID: appID, Round: "一面", Result: "待确认", Questions: "网络分层", WeakPoints: "HTTP/3", FollowUp: "复习 QUIC"})
+	interviewID, err := st.CreateInterview(ctx, CreateInterviewInput{ApplicationID: appID, Round: "一面", InterviewTime: "2026-09-08T14:00", InterviewMode: "视频面试", MeetingLink: "https://meeting.example.com/room", ScheduleNotes: "提前 10 分钟入会", Result: "待面试", Questions: "网络分层", WeakPoints: "HTTP/3", FollowUp: "复习 QUIC"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	interviews, err := st.ListInterviews(ctx)
-	if err != nil || len(interviews) != 1 || interviews[0].CompanyName != "流程公司" {
+	if err != nil || len(interviews) != 1 || interviews[0].CompanyName != "流程公司" || interviews[0].InterviewMode != "视频面试" || interviews[0].MeetingLink != "https://meeting.example.com/room" || interviews[0].ScheduleNotes != "提前 10 分钟入会" {
 		t.Fatalf("interviews=%#v err=%v", interviews, err)
+	}
+	if _, err := st.CreateInterview(ctx, CreateInterviewInput{ApplicationID: appID, Round: "一面", MeetingLink: "javascript:alert(1)"}); err == nil {
+		t.Fatal("expected invalid meeting link to be rejected")
 	}
 	if err := st.UpdateInterview(ctx, interviewID, CreateInterviewInput{ApplicationID: appID, Round: "二面", Result: "通过", Summary: "项目追问深入", Questions: "缓存一致性", WeakPoints: "消息队列", FollowUp: "复盘项目"}); err != nil {
 		t.Fatal(err)

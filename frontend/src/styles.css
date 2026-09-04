@@ -421,3 +421,45 @@ input,select{height:42px}input,select,textarea{font-size:.86rem}
   .material-counts{padding-inline:14px}
 }
 @media(max-width:900px){.update-network-fields{grid-template-columns:1fr}.update-network-test{justify-self:start}}
+
+/* Post-v4.3 usability refinements: interview focus, clearer forms and resume rows. */
+.interview-focus-panel{overflow:hidden;border-color:color-mix(in srgb,var(--accent) 28%,var(--line));box-shadow:0 10px 30px rgba(10,114,232,.065)}
+.interview-focus-panel>.panel-heading{background:linear-gradient(180deg,#f7fbff 0%,#fff 100%)}
+.interview-focus-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(380px,100%),1fr));gap:12px;padding:14px}
+.interview-focus-grid>article{min-width:0;display:grid;gap:15px;padding:17px;border:1px solid #d8e4f1;border-radius:12px;background:#fff}
+.interview-focus-grid>article.needs-schedule{border-color:#ead8b7;background:#fffdf8}
+.interview-focus-grid header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.interview-focus-grid header>div{min-width:0}.interview-focus-grid header>div>span{color:var(--accent-strong);font-size:.7rem;font-weight:750}
+.interview-focus-grid h3{margin:5px 0 3px;color:var(--ink-strong);font-size:1rem}.interview-focus-grid header p{overflow:hidden;margin:0;color:var(--muted);font-size:.76rem;text-overflow:ellipsis;white-space:nowrap}
+.interview-focus-schedule{display:grid;gap:8px;padding:12px;border-radius:10px;background:var(--surface-muted)}
+.interview-focus-schedule>span{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:.76rem}.interview-focus-schedule svg{flex:0 0 auto;color:var(--accent)}
+.interview-focus-schedule strong{color:var(--ink);font-size:.8rem}.interview-focus-schedule p{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;margin:2px 0 0;color:var(--muted);font-size:.73rem;line-height:1.55}
+.interview-focus-grid footer{display:flex;align-items:center;justify-content:flex-end;gap:7px;margin-top:auto}.interview-focus-grid footer .text-button{margin-right:auto}.interview-focus-grid footer .primary-button,.interview-focus-grid footer .secondary-button{min-height:32px;padding-inline:10px;font-size:.72rem}
+.interview-card-head small{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin-top:6px}.interview-card-head small i{font-style:normal}.interview-schedule-note{display:flex;align-items:flex-start;gap:12px;margin:14px 0;padding:11px 13px;border:1px solid #d8e5f2;border-radius:9px;background:#f7fbff}.interview-schedule-note p{margin:0;flex:1;color:var(--muted);font-size:.75rem;line-height:1.55}.interview-schedule-note a{display:inline-flex;align-items:center;gap:5px;color:var(--accent-strong);font-size:.73rem;font-weight:700;text-decoration:none;white-space:nowrap}
+
+.modal-card:has(.application-create-form){width:min(1040px,calc(100vw - 64px))}
+.application-create-layout{display:grid;grid-template-columns:minmax(0,1.18fr) minmax(330px,.82fr)}
+.application-role-section{border-right:1px solid var(--line)}.application-form-aside{background:#fafbfd}
+.application-form-section{padding:21px 22px}.application-form-aside .application-form-section+section{border-top:1px solid var(--line)}
+.application-form-section>header{display:flex;align-items:flex-start;gap:11px;margin-bottom:18px}.application-form-section>header>span{width:36px;height:36px;flex:0 0 auto;display:grid;place-items:center;border-radius:10px;background:var(--accent-soft);color:var(--accent)}
+.application-form-section h3{margin:1px 0 4px;color:var(--ink-strong);font-size:.9rem}.application-form-section header p{margin:0;color:var(--muted);font-size:.7rem;line-height:1.5}
+.application-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.application-form-aside .application-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.application-create-form label:has(input[required])>span:after{content:" *";color:#c74d4d}.application-role-section textarea{min-height:214px}
+.application-create-actions{position:sticky;bottom:0;z-index:2;background:rgba(255,255,255,.94);backdrop-filter:blur(14px)}.application-create-actions>span{margin-right:auto;color:var(--faint);font-size:.68rem}
+
+.resume-file-library.card .resume-file-card{display:flex;flex-direction:column}.resume-file-library.card .resume-primary-actions{margin:0;padding:0 16px 14px;justify-content:flex-start}.resume-file-library.card details{margin-top:auto}
+.resume-file-library.list .resume-file-card{display:grid;grid-template-columns:minmax(260px,1fr) minmax(120px,.42fr) minmax(300px,1.1fr) auto;grid-template-areas:"resume-identity resume-tags resume-links resume-actions";align-items:center;column-gap:16px;min-height:78px}
+.resume-file-library.list .resume-file-card>header{grid-area:resume-identity;min-width:0;padding:12px 8px 12px 13px}.resume-file-library.list .resume-file-tags{grid-area:resume-tags;min-width:0;padding:10px 0}.resume-file-library.list details{grid-area:resume-links;min-width:0}.resume-file-library.list .resume-primary-actions{grid-area:resume-actions;margin:0;padding:10px 13px 10px 0;justify-content:flex-end;white-space:nowrap}
+.resume-file-library.list .resume-linked-jobs{padding:0}.resume-file-library.list .resume-linked-jobs>div:first-child{border-top:0}.resume-file-library.list .resume-linked-jobs>div{padding-block:8px}
+
+@media(max-width:1320px){
+  .resume-file-library.list .resume-file-card{grid-template-columns:minmax(250px,.9fr) minmax(280px,1fr) auto;grid-template-areas:"resume-identity resume-links resume-actions" "resume-tags resume-links resume-actions"}.resume-file-library.list .resume-file-tags{padding:0 13px 11px}
+}
+@media(max-width:1180px){
+  .interview-focus-grid{grid-template-columns:1fr}.application-create-layout{grid-template-columns:1fr}.application-role-section{border-right:0;border-bottom:1px solid var(--line)}.application-form-aside{display:grid;grid-template-columns:1fr 1fr}.application-form-aside .application-form-section+section{border-top:0;border-left:1px solid var(--line)}
+}
+@media(max-width:900px){
+  .interview-focus-grid footer{align-items:stretch;flex-wrap:wrap}.interview-focus-grid footer .text-button{flex-basis:100%}.interview-focus-grid footer .primary-button,.interview-focus-grid footer .secondary-button{flex:1;justify-content:center}
+  .application-form-aside{display:block}.application-form-aside .application-form-section+section{border-top:1px solid var(--line);border-left:0}.application-form-grid,.application-form-aside .application-form-grid{grid-template-columns:1fr}.application-create-actions>span{display:none}
+  .resume-file-library.list .resume-file-card{display:block;min-height:0;margin-bottom:10px;border:1px solid var(--line);border-radius:12px}.resume-file-library.list .resume-file-tags{padding:0 16px 12px}.resume-file-library.list .resume-primary-actions{padding:0 16px 13px;justify-content:flex-start}.resume-file-library.list details{border-top:1px solid var(--line-soft)}.resume-file-library.list details summary{display:flex}
+}

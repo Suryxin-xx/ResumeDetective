@@ -145,9 +145,12 @@
     {
       "applicationCompany": "远帆能源",
       "round": "一面",
-      "interviewTime": "2026-08-06T14:00",
-      "summary": "围绕项目协同与风险识别展开。",
-      "result": "待确认",
+      "interviewTime": "2026-09-08T14:00",
+      "interviewMode": "视频面试",
+      "meetingLink": "https://example.com/demo-interview",
+      "scheduleNotes": "请提前 10 分钟进入会议，并准备一段项目风险复盘。",
+      "summary": "",
+      "result": "待面试",
       "questions": "如何处理关键节点延期？",
       "weakPoints": "量化结果还不够具体。",
       "followUp": "补充进度偏差与改进指标。"

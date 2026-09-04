@@ -1,6 +1,6 @@
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = "4.3.1",
+    [string]$Version = "4.3.2",
     [string]$ReleaseRoot = "",
     [switch]$ArchiveExisting
 )
@@ -24,6 +24,7 @@ $stagingRoot = Join-Path $releaseParent (".staging-{0}-{1}" -f ([System.IO.Path]
 $payload = Join-Path $stagingRoot "ResumeDetective"
 $zipPath = Join-Path $stagingRoot "ResumeDetective-windows-x64.zip"
 $archivedExisting = $null
+New-Item -ItemType Directory -Force -Path $stagingRoot | Out-Null
 
 $go = Get-Command go -ErrorAction SilentlyContinue
 if (-not $go -and $env:RESUME_DETECTIVE_GO) { $go = Get-Item -LiteralPath $env:RESUME_DETECTIVE_GO -ErrorAction SilentlyContinue }

@@ -127,6 +127,10 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("初始化数据库: %w", err)
 	}
+	if err := ensureInterviewScheduleColumns(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("升级面试安排字段: %w", err)
+	}
 	if err := repairLegacyResumeRows(db); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("修复旧版简历字段: %w", err)

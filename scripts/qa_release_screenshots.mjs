@@ -36,6 +36,15 @@ async function capture(route, heading, filename, anchor = "") {
   await page.screenshot({ path: path.join(output, filename), fullPage: false });
 }
 
+async function captureNewApplication() {
+  await page.goto(`http://127.0.0.1:${port}/#/applications`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "新建投递" }).click();
+  await page.getByRole("dialog", { name: "新建投递" }).waitFor();
+  await page.waitForTimeout(320);
+  await page.screenshot({ path: path.join(output, "v4-application-new.png"), fullPage: false });
+  await page.getByRole("button", { name: "关闭" }).click();
+}
+
 // Regression: ordinary navigation must never reuse the top-bar "new application" signal.
 await page.goto(`http://127.0.0.1:${port}/#/overview`, { waitUntil: "networkidle" });
 await page.getByRole("button", { name: "投递管理", exact: true }).click();
@@ -49,9 +58,10 @@ if (await page.locator('[role="dialog"]').count()) throw new Error("Consumed new
 
 await capture("overview", "秋招工作台", "v4-overview.png");
 await capture("applications", "投递管理", "v4-applications.png");
+await captureNewApplication();
 await capture("targets", "意向清单", "v4-targets.png");
 await capture("tasks", "行动清单", "v4-tasks.png");
-await capture("interviews", "面试复盘", "v4-interviews.png");
+await capture("interviews", "面试安排与复盘", "v4-interviews.png");
 await capture("offers", "Offer 对比", "v4-offers.png");
 await capture("resumes", "简历汇总", "v4-resumes.png");
 await capture("profile", "个人资料库", "v4-profile.png");

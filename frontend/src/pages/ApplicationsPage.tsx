@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckSquare2, ChevronDown, ChevronUp, Download, ExternalLink, Eye, EyeOff, FileText, Filter, ImageDown, Link2, Search, Sparkles, Trash2 } from "lucide-react";
+import { Building2, CheckSquare2, ChevronDown, ChevronUp, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderArchive, ImageDown, Link2, Search, Sparkles, Trash2, Workflow } from "lucide-react";
 import { api, formatDateTime, jsonBody, todayISO } from "../api";
 import { ConfirmButton, EmptyState, Field, Modal, PageHeader, Panel, Priority, StatusBadge } from "../components";
 import type { PageProps } from "../App";
@@ -150,22 +150,30 @@ function ApplicationRows({ item, selected, onSelect, expanded, onToggle, refresh
 }
 
 function ApplicationForm({ onSubmit, onClose, busy }: { onSubmit: (event: React.FormEvent<HTMLFormElement>) => void; onClose: () => void; busy: boolean }) {
-  return <form onSubmit={onSubmit}><div className="modal-form-grid">
-    <Field label="公司名称"><input name="companyName" required autoFocus placeholder="例如：华为" /></Field>
-    <Field label="岗位名称"><input name="positionName" required placeholder="例如：硬件技术工程师" /></Field>
-    <Field label="当前环节"><select name="currentStatus" defaultValue="已投递">{statuses.map((value) => <option key={value}>{value}</option>)}</select></Field>
-    <Field label="环节状态"><select name="stageState" defaultValue="已完成，等待结果">{stageStates.map((value) => <option key={value}>{value}</option>)}</select></Field>
-    <Field label="投递日期"><input name="appliedAt" type="date" defaultValue={todayISO()} /></Field>
-    <Field label="优先级"><select name="priority" defaultValue="0">{[0, 1, 2, 3, 4, 5].map((value) => <option value={value} key={value}>{value ? `${value} 级` : "普通"}</option>)}</select></Field>
-    <Field label="城市"><input name="city" placeholder="上海" /></Field>
-    <Field label="投递来源"><input name="source" list="sources" placeholder="官网 / 内推" /></Field>
-    <Field label="岗位类型"><input name="category" list="categories" placeholder="研发 / 供应链 / 产品" /></Field>
-    <Field label="自定义标签"><input name="tags" placeholder="新能源, 管培" /></Field>
-    <Field label="岗位链接" span><input name="jobLink" type="url" placeholder="https://" /></Field>
-    <Field label="绑定简历" span><input name="resumeFile" type="file" accept=".pdf,.doc,.docx" /></Field>
-    <Field label="JD 原文" hint="建议完整保存，后续复盘和 AI 分析都会用到。" span><textarea name="jdText" rows={7} /></Field>
+  return <form className="application-create-form" onSubmit={onSubmit}><div className="application-create-layout">
+    <section className="application-form-section application-role-section"><header><span><Building2 size={18}/></span><div><h3>岗位信息</h3><p>先保存最重要的公司、岗位、链接和 JD。</p></div></header><div className="application-form-grid">
+      <Field label="公司名称"><input name="companyName" required autoFocus placeholder="例如：华为" /></Field>
+      <Field label="岗位名称"><input name="positionName" required placeholder="例如：硬件技术工程师" /></Field>
+      <Field label="岗位链接" span><input name="jobLink" type="url" placeholder="https://careers.example.com/job/..." /></Field>
+      <Field label="JD 原文" hint="建议完整保存；岗位关闭后仍可复盘，也可供岗位准备助手使用。" span><textarea name="jdText" rows={10} placeholder="粘贴岗位职责、任职要求和加分项…" /></Field>
+    </div></section>
+    <aside className="application-form-aside">
+      <section className="application-form-section"><header><span><Workflow size={18}/></span><div><h3>投递状态</h3><p>默认按今天已投递记录，之后可随时调整。</p></div></header><div className="application-form-grid">
+        <Field label="当前环节"><select name="currentStatus" defaultValue="已投递">{statuses.map((value) => <option key={value}>{value}</option>)}</select></Field>
+        <Field label="环节状态"><select name="stageState" defaultValue="已完成，等待结果">{stageStates.map((value) => <option key={value}>{value}</option>)}</select></Field>
+        <Field label="投递日期"><input name="appliedAt" type="date" defaultValue={todayISO()} /></Field>
+        <Field label="优先级"><select name="priority" defaultValue="0">{[0, 1, 2, 3, 4, 5].map((value) => <option value={value} key={value}>{value ? `${value} 级` : "普通"}</option>)}</select></Field>
+      </div></section>
+      <section className="application-form-section"><header><span><FolderArchive size={18}/></span><div><h3>分类与材料</h3><p>用于后续筛选和快速找到当时使用的简历。</p></div></header><div className="application-form-grid">
+        <Field label="城市"><input name="city" placeholder="例如：上海" /></Field>
+        <Field label="投递来源"><input name="source" list="sources" placeholder="官网 / 内推" /></Field>
+        <Field label="岗位类型"><input name="category" list="categories" placeholder="研发 / 供应链 / 产品" /></Field>
+        <Field label="自定义标签"><input name="tags" placeholder="新能源, 管培" /></Field>
+        <Field label="绑定简历" hint="支持 PDF、DOC、DOCX；也可以稍后再绑定。" span><input name="resumeFile" type="file" accept=".pdf,.doc,.docx" /></Field>
+      </div></section>
+    </aside>
     <input type="hidden" name="nextAction" value="等待结果" /><input type="hidden" name="applicationDeadline" value="" /><input type="hidden" name="nextActionDueAt" value="" /><input type="hidden" name="lastFollowUpAt" value="" />
-  </div><div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>取消</button><button className="primary-button" disabled={busy}>{busy ? "保存中…" : "保存投递"}</button></div>
+  </div><div className="modal-actions application-create-actions"><span>带 * 的公司与岗位为必填项</span><button type="button" className="secondary-button" onClick={onClose}>取消</button><button className="primary-button" disabled={busy}>{busy ? "保存中…" : "保存投递"}</button></div>
   <datalist id="sources">{sources.map((value) => <option key={value} value={value} />)}</datalist><datalist id="categories">{categories.map((value) => <option key={value} value={value} />)}</datalist><datalist id="next-actions">{["等待结果", "完成测评", "准备笔试", "准备业务面", "准备 HR 面", "跟进进度", "接受 Offer"].map((value) => <option key={value} value={value} />)}</datalist></form>;
 }
 

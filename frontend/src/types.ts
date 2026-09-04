@@ -65,6 +65,9 @@ export type Interview = {
   positionName: string;
   round: string;
   interviewTime: string;
+  interviewMode: string;
+  meetingLink: string;
+  scheduleNotes: string;
   summary: string;
   result: string;
   questions: string;

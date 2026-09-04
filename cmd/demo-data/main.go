@@ -28,8 +28,8 @@ type demoTask struct {
 	Priority              int
 }
 type demoInterview struct {
-	ApplicationCompany                                                     string `json:"applicationCompany"`
-	Round, InterviewTime, Summary, Result, Questions, WeakPoints, FollowUp string
+	ApplicationCompany                                                                                                string `json:"applicationCompany"`
+	Round, InterviewTime, InterviewMode, MeetingLink, ScheduleNotes, Summary, Result, Questions, WeakPoints, FollowUp string
 }
 type demoOffer struct {
 	ApplicationCompany string `json:"applicationCompany"`
@@ -121,7 +121,7 @@ func main() {
 		if applicationID == 0 {
 			fail(fmt.Errorf("interview references unknown company: %s", item.ApplicationCompany))
 		}
-		id, err := st.CreateInterview(ctx, store.CreateInterviewInput{ApplicationID: applicationID, Round: item.Round, InterviewTime: item.InterviewTime, Summary: item.Summary, Result: item.Result, Questions: item.Questions, WeakPoints: item.WeakPoints, FollowUp: item.FollowUp})
+		id, err := st.CreateInterview(ctx, store.CreateInterviewInput{ApplicationID: applicationID, Round: item.Round, InterviewTime: item.InterviewTime, InterviewMode: item.InterviewMode, MeetingLink: item.MeetingLink, ScheduleNotes: item.ScheduleNotes, Summary: item.Summary, Result: item.Result, Questions: item.Questions, WeakPoints: item.WeakPoints, FollowUp: item.FollowUp})
 		if err != nil {
 			fail(err)
 		}

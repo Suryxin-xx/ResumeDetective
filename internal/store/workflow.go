@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -29,6 +30,9 @@ type Interview struct {
 	PositionName  string `json:"positionName"`
 	Round         string `json:"round"`
 	InterviewTime string `json:"interviewTime"`
+	InterviewMode string `json:"interviewMode"`
+	MeetingLink   string `json:"meetingLink"`
+	ScheduleNotes string `json:"scheduleNotes"`
 	Summary       string `json:"summary"`
 	Result        string `json:"result"`
 	Questions     string `json:"questions"`
@@ -48,11 +52,26 @@ type CreateInterviewInput struct {
 	ApplicationID int64  `json:"applicationId"`
 	Round         string `json:"round"`
 	InterviewTime string `json:"interviewTime"`
+	InterviewMode string `json:"interviewMode"`
+	MeetingLink   string `json:"meetingLink"`
+	ScheduleNotes string `json:"scheduleNotes"`
 	Summary       string `json:"summary"`
 	Result        string `json:"result"`
 	Questions     string `json:"questions"`
 	WeakPoints    string `json:"weakPoints"`
 	FollowUp      string `json:"followUp"`
+}
+
+func normalizeMeetingLink(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	parsed, err := url.ParseRequestURI(value)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", errors.New("会议链接必须是有效的 http 或 https 地址")
+	}
+	return value, nil
 }
 
 func (s *Store) ListTasks(ctx context.Context) ([]Task, error) {
@@ -119,7 +138,7 @@ func (s *Store) DeleteTask(ctx context.Context, id int64) error {
 }
 
 func (s *Store) ListInterviews(ctx context.Context) ([]Interview, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT i.id,i.application_id,r.company_name,r.position_name,i.round,COALESCE(i.interview_time,''),COALESCE(i.summary,''),i.result,COALESCE(i.questions,''),COALESCE(i.weak_points,''),COALESCE(i.follow_up,''),COALESCE(i.created_at,'') FROM interviews i JOIN applications a ON a.id=i.application_id JOIN resumes r ON r.id=a.resume_id ORDER BY CASE WHEN i.interview_time='' THEN 1 ELSE 0 END,i.interview_time DESC,i.id DESC`)
+	rows, err := s.db.QueryContext(ctx, `SELECT i.id,i.application_id,r.company_name,r.position_name,i.round,COALESCE(i.interview_time,''),COALESCE(i.interview_mode,''),COALESCE(i.meeting_link,''),COALESCE(i.schedule_notes,''),COALESCE(i.summary,''),i.result,COALESCE(i.questions,''),COALESCE(i.weak_points,''),COALESCE(i.follow_up,''),COALESCE(i.created_at,'') FROM interviews i JOIN applications a ON a.id=i.application_id JOIN resumes r ON r.id=a.resume_id ORDER BY CASE WHEN i.interview_time='' THEN 1 ELSE 0 END,i.interview_time DESC,i.id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +146,7 @@ func (s *Store) ListInterviews(ctx context.Context) ([]Interview, error) {
 	items := []Interview{}
 	for rows.Next() {
 		var item Interview
-		if err := rows.Scan(&item.ID, &item.ApplicationID, &item.CompanyName, &item.PositionName, &item.Round, &item.InterviewTime, &item.Summary, &item.Result, &item.Questions, &item.WeakPoints, &item.FollowUp, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.ApplicationID, &item.CompanyName, &item.PositionName, &item.Round, &item.InterviewTime, &item.InterviewMode, &item.MeetingLink, &item.ScheduleNotes, &item.Summary, &item.Result, &item.Questions, &item.WeakPoints, &item.FollowUp, &item.CreatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -143,7 +162,11 @@ func (s *Store) CreateInterview(ctx context.Context, in CreateInterviewInput) (i
 		in.Round = "一面"
 	}
 	if strings.TrimSpace(in.Result) == "" {
-		in.Result = "待确认"
+		in.Result = "待面试"
+	}
+	meetingLink, err := normalizeMeetingLink(in.MeetingLink)
+	if err != nil {
+		return 0, err
 	}
 	var exists int
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM applications WHERE id=?", in.ApplicationID).Scan(&exists); err != nil {
@@ -152,7 +175,7 @@ func (s *Store) CreateInterview(ctx context.Context, in CreateInterviewInput) (i
 	if exists == 0 {
 		return 0, errors.New("对应岗位不存在")
 	}
-	result, err := s.db.ExecContext(ctx, `INSERT INTO interviews(application_id,round,interview_time,summary,result,questions,weak_points,follow_up,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, in.ApplicationID, strings.TrimSpace(in.Round), strings.TrimSpace(in.InterviewTime), strings.TrimSpace(in.Summary), strings.TrimSpace(in.Result), strings.TrimSpace(in.Questions), strings.TrimSpace(in.WeakPoints), strings.TrimSpace(in.FollowUp), time.Now().Format(time.RFC3339))
+	result, err := s.db.ExecContext(ctx, `INSERT INTO interviews(application_id,round,interview_time,interview_mode,meeting_link,schedule_notes,summary,result,questions,weak_points,follow_up,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, in.ApplicationID, strings.TrimSpace(in.Round), strings.TrimSpace(in.InterviewTime), strings.TrimSpace(in.InterviewMode), meetingLink, strings.TrimSpace(in.ScheduleNotes), strings.TrimSpace(in.Summary), strings.TrimSpace(in.Result), strings.TrimSpace(in.Questions), strings.TrimSpace(in.WeakPoints), strings.TrimSpace(in.FollowUp), time.Now().Format(time.RFC3339))
 	if err != nil {
 		return 0, err
 	}
@@ -172,6 +195,10 @@ func (s *Store) UpdateInterview(ctx context.Context, id int64, in CreateIntervie
 	if strings.TrimSpace(in.Result) == "" {
 		in.Result = "待确认"
 	}
+	meetingLink, err := normalizeMeetingLink(in.MeetingLink)
+	if err != nil {
+		return err
+	}
 	var applicationExists int
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM applications WHERE id=?", in.ApplicationID).Scan(&applicationExists); err != nil {
 		return err
@@ -179,7 +206,7 @@ func (s *Store) UpdateInterview(ctx context.Context, id int64, in CreateIntervie
 	if applicationExists == 0 {
 		return errors.New("对应岗位不存在")
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE interviews SET application_id=?,round=?,interview_time=?,summary=?,result=?,questions=?,weak_points=?,follow_up=? WHERE id=?`, in.ApplicationID, strings.TrimSpace(in.Round), strings.TrimSpace(in.InterviewTime), strings.TrimSpace(in.Summary), strings.TrimSpace(in.Result), strings.TrimSpace(in.Questions), strings.TrimSpace(in.WeakPoints), strings.TrimSpace(in.FollowUp), id)
+	result, err := s.db.ExecContext(ctx, `UPDATE interviews SET application_id=?,round=?,interview_time=?,interview_mode=?,meeting_link=?,schedule_notes=?,summary=?,result=?,questions=?,weak_points=?,follow_up=? WHERE id=?`, in.ApplicationID, strings.TrimSpace(in.Round), strings.TrimSpace(in.InterviewTime), strings.TrimSpace(in.InterviewMode), meetingLink, strings.TrimSpace(in.ScheduleNotes), strings.TrimSpace(in.Summary), strings.TrimSpace(in.Result), strings.TrimSpace(in.Questions), strings.TrimSpace(in.WeakPoints), strings.TrimSpace(in.FollowUp), id)
 	if err != nil {
 		return err
 	}
