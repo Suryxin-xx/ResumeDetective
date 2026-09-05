@@ -123,6 +123,7 @@ export type AppConfig = {
   backupRetention: number;
   navigationOrder: string[];
   hiddenNavigation: string[];
+  navigationDefaultsVersion?: number;
   ai: AIConfig;
 };
 

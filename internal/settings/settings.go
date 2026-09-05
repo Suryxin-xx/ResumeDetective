@@ -32,21 +32,22 @@ type UpdateNetworkConfig struct {
 }
 
 type Config struct {
-	Port                int                 `json:"port"`
-	WorkspaceName       string              `json:"workspaceName"`
-	Theme               string              `json:"theme"`
-	OpenBrowserOnStart  bool                `json:"openBrowserOnStart"`
-	StartAtLogin        bool                `json:"startAtLogin"`
-	ResumeNameTemplate  string              `json:"resumeNameTemplate"`
-	AutoRenameResumes   bool                `json:"autoRenameResumes"`
-	CheckUpdatesOnStart bool                `json:"checkUpdatesOnStart"`
-	UpdateNetwork       UpdateNetworkConfig `json:"updateNetwork"`
-	AutoBackupEnabled   bool                `json:"autoBackupEnabled"`
-	AutoBackupHours     int                 `json:"autoBackupHours"`
-	BackupRetention     int                 `json:"backupRetention"`
-	NavigationOrder     []string            `json:"navigationOrder"`
-	HiddenNavigation    []string            `json:"hiddenNavigation"`
-	AI                  AIConfig            `json:"ai"`
+	Port                      int                 `json:"port"`
+	WorkspaceName             string              `json:"workspaceName"`
+	Theme                     string              `json:"theme"`
+	OpenBrowserOnStart        bool                `json:"openBrowserOnStart"`
+	StartAtLogin              bool                `json:"startAtLogin"`
+	ResumeNameTemplate        string              `json:"resumeNameTemplate"`
+	AutoRenameResumes         bool                `json:"autoRenameResumes"`
+	CheckUpdatesOnStart       bool                `json:"checkUpdatesOnStart"`
+	UpdateNetwork             UpdateNetworkConfig `json:"updateNetwork"`
+	AutoBackupEnabled         bool                `json:"autoBackupEnabled"`
+	AutoBackupHours           int                 `json:"autoBackupHours"`
+	BackupRetention           int                 `json:"backupRetention"`
+	NavigationOrder           []string            `json:"navigationOrder"`
+	HiddenNavigation          []string            `json:"hiddenNavigation"`
+	NavigationDefaultsVersion int                 `json:"navigationDefaultsVersion"`
+	AI                        AIConfig            `json:"ai"`
 }
 
 var defaultNavigation = []string{
@@ -76,7 +77,8 @@ func Defaults() Config {
 		BackupRetention:     14,
 		NavigationOrder:     append([]string(nil), defaultNavigation...),
 		// 低频工具默认收进设置，保持首次使用时的侧栏简洁；用户可随时重新显示。
-		HiddenNavigation: []string{"ai", "tools"},
+		HiddenNavigation:          []string{"tasks", "ai", "tools"},
+		NavigationDefaultsVersion: 1,
 		AI: AIConfig{
 			Mode:                 "direct",
 			BaseURL:              "https://api.deepseek.com",
@@ -92,6 +94,15 @@ func Open(path, envPath string) (*Manager, error) {
 	if raw, err := os.ReadFile(path); err == nil {
 		if err := json.Unmarshal(raw, &m.value); err != nil {
 			return nil, errors.New("配置文件格式不正确")
+		}
+		var persisted struct {
+			NavigationDefaultsVersion *int `json:"navigationDefaultsVersion"`
+		}
+		if err := json.Unmarshal(raw, &persisted); err != nil {
+			return nil, errors.New("配置文件格式不正确")
+		}
+		if persisted.NavigationDefaultsVersion == nil {
+			m.value.NavigationDefaultsVersion = 0
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, err
@@ -150,6 +161,12 @@ func (m *Manager) DeleteAPIKey() error {
 }
 
 func (c *Config) normalize() {
+	if c.NavigationDefaultsVersion < 1 {
+		if !containsString(c.HiddenNavigation, "tasks") {
+			c.HiddenNavigation = append(c.HiddenNavigation, "tasks")
+		}
+		c.NavigationDefaultsVersion = 1
+	}
 	if c.Port < 1024 || c.Port > 65535 {
 		c.Port = DefaultPort
 	}
@@ -201,6 +218,15 @@ func (c *Config) normalize() {
 	if len(c.UpdateNetwork.ProxyURL) > 512 {
 		c.UpdateNetwork.ProxyURL = c.UpdateNetwork.ProxyURL[:512]
 	}
+}
+
+func containsString(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeNavigationOrder(input []string) []string {

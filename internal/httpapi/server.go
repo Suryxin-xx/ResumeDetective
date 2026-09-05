@@ -43,7 +43,7 @@ type Server struct {
 	pickDirectory func(context.Context) (string, error)
 }
 
-var Version = "4.3.1-dev"
+var Version = "4.4.0-dev"
 
 type Options struct {
 	Settings      *settings.Manager
@@ -68,7 +68,9 @@ func NewWithOptions(st *store.Store, web fs.FS, paths config.Paths, v3Dir string
 	mux.HandleFunc("PATCH /api/applications/{id}", s.updateApplication)
 	mux.HandleFunc("DELETE /api/applications/{id}", s.deleteApplication)
 	mux.HandleFunc("POST /api/applications/{id}/resume", s.uploadResume)
+	mux.HandleFunc("POST /api/applications/{id}/resume/link", s.linkResume)
 	mux.HandleFunc("POST /api/applications/{id}/resume/rename", s.renameResume)
+	mux.HandleFunc("POST /api/applications/{id}/interview-stage", s.syncApplicationInterviewStage)
 	mux.HandleFunc("GET /resume/{id}", s.viewResume)
 	mux.HandleFunc("POST /api/backups", s.createBackup)
 	mux.HandleFunc("DELETE /api/demo", s.clearDemo)
@@ -276,6 +278,68 @@ func (s *Server) uploadResume(w http.ResponseWriter, r *http.Request) {
 	keep = true
 	s.syncApplicationWorkbook(r.Context())
 	writeJSON(w, http.StatusCreated, map[string]bool{"ok": true})
+}
+
+func (s *Server) linkResume(w http.ResponseWriter, r *http.Request) {
+	id, err := store.ParseID(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var in struct {
+		SourceApplicationID int64 `json:"sourceApplicationId"`
+	}
+	if err := decodeJSON(w, r, &in); err != nil {
+		return
+	}
+	if in.SourceApplicationID < 1 || in.SourceApplicationID == id {
+		writeError(w, http.StatusBadRequest, "请选择另一条已绑定简历的投递")
+		return
+	}
+	filePath, err := s.store.ResumePath(r.Context(), in.SourceApplicationID)
+	if err != nil || strings.TrimSpace(filePath) == "" {
+		writeError(w, http.StatusBadRequest, "所选投递尚未绑定简历")
+		return
+	}
+	info, err := os.Stat(filePath)
+	if err != nil || !info.Mode().IsRegular() {
+		writeError(w, http.StatusBadRequest, "所选简历文件不存在或不可访问")
+		return
+	}
+	if err := s.store.SetResumePath(r.Context(), id, filePath); err != nil {
+		if strings.Contains(err.Error(), "不存在") {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		s.internalError(w, r, err)
+		return
+	}
+	s.syncApplicationWorkbook(r.Context())
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "fileName": filepath.Base(filePath)})
+}
+
+func (s *Server) syncApplicationInterviewStage(w http.ResponseWriter, r *http.Request) {
+	id, err := store.ParseID(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var in struct {
+		Round  string `json:"round"`
+		Result string `json:"result"`
+	}
+	if err := decodeJSON(w, r, &in); err != nil {
+		return
+	}
+	changed, err := s.store.SyncApplicationInterviewStage(r.Context(), id, in.Round, in.Result)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if changed {
+		s.syncApplicationWorkbook(r.Context())
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true, "changed": changed})
 }
 
 func (s *Server) renameResume(w http.ResponseWriter, r *http.Request) {
@@ -693,15 +757,47 @@ func (s *Server) installUpdate(w http.ResponseWriter, r *http.Request) {
 	if err := decodeJSON(w, r, &download); err != nil {
 		return
 	}
+	backupPath, err := s.createPreUpdateBackup(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "更新前数据库备份失败，已取消安装："+err.Error())
+		return
+	}
 	if err := s.updater.StartInstall(download); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusAccepted, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "backup": filepath.Base(backupPath)})
 	go func() {
 		time.Sleep(250 * time.Millisecond)
 		s.shutdown()
 	}()
+}
+
+func (s *Server) createPreUpdateBackup(ctx context.Context) (string, error) {
+	if strings.TrimSpace(s.backupsDir) == "" {
+		return "", errors.New("备份目录未配置")
+	}
+	if err := os.MkdirAll(s.backupsDir, 0o700); err != nil {
+		return "", fmt.Errorf("创建备份目录: %w", err)
+	}
+	base := "pre-update-" + time.Now().Format("20060102-150405")
+	for index := 0; index < 100; index++ {
+		name := base + ".db"
+		if index > 0 {
+			name = fmt.Sprintf("%s-%d.db", base, index)
+		}
+		destination := filepath.Join(s.backupsDir, name)
+		if _, err := os.Stat(destination); err == nil {
+			continue
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		if err := s.store.Backup(ctx, destination); err != nil {
+			return "", err
+		}
+		return destination, nil
+	}
+	return "", errors.New("同一时间的更新备份过多")
 }
 
 func (s *Server) listTargets(w http.ResponseWriter, r *http.Request) {

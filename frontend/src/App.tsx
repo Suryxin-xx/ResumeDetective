@@ -129,7 +129,7 @@ export default function App() {
         </div>
         <nav aria-label="主导航">
           {visibleNavigation.map(([key, label, Icon]) => (
-            <button key={key} className={page === key ? "active" : ""} onClick={() => go(key)} title={sidebarCompact ? label : undefined}>
+            <button key={key} className={page === key ? "active" : ""} onClick={() => go(key)} title={label} aria-label={label} aria-current={page === key ? "page" : undefined}>
               <Icon size={18} strokeWidth={1.8} /><span>{label}</span>
               {key === "targets" && data.targets.filter((item) => item.status === "待投递").length > 0 && <em>{data.targets.filter((item) => item.status === "待投递").length}</em>}
               {key === "tasks" && data.dashboard.openTasks > 0 && <em>{data.dashboard.openTasks}</em>}

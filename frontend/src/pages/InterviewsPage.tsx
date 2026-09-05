@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { CalendarClock, ExternalLink, MessageSquarePlus, Pencil, Search, Trash2, Video } from "lucide-react";
 import { api, formatDateTime, jsonBody } from "../api";
 import { ConfirmButton, EmptyState, Field, PageHeader, Panel, StatusBadge } from "../components";
+import { interviewResultLabel, interviewStage, interviewStageState } from "../interviewProgress";
 import type { PageProps } from "../App";
 import type { Interview } from "../types";
 
@@ -14,10 +15,6 @@ const results = [
   { value: "通过", label: "通过" },
   { value: "未通过", label: "未通过" },
 ];
-
-function resultLabel(result: string) {
-  return result === "待确认" ? "结果待通知" : result || "结果待通知";
-}
 
 function routeSelection() {
   const query = window.location.hash.split("?")[1] || "";
@@ -49,16 +46,31 @@ export default function InterviewsPage({ data, refresh }: PageProps) {
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const payload = Object.fromEntries(new FormData(event.currentTarget));
+    const values = new FormData(event.currentTarget);
+    const syncApplicationStage = values.get("syncApplicationStage") === "on";
+    values.delete("syncApplicationStage");
+    const payload = Object.fromEntries(values);
     payload.applicationId = Number(payload.applicationId) as never;
+    let syncWarning = "";
     try {
       await api(editing ? `/interviews/${editing.id}` : "/interviews", {
         method: editing ? "PATCH" : "POST",
         ...jsonBody(payload),
       });
+      if (syncApplicationStage) {
+        try {
+          await api(`/applications/${payload.applicationId}/interview-stage`, {
+            method: "POST",
+            ...jsonBody({ round: payload.round, result: payload.result }),
+          });
+        } catch (reason) {
+          syncWarning = reason instanceof Error ? reason.message : "投递状态同步失败";
+        }
+      }
       setEditor(null);
       setPresetApplicationId(0);
       await refresh();
+      if (syncWarning) window.alert(`面试记录已保存，但${syncWarning}`);
     } catch (reason) {
       window.alert(reason instanceof Error ? reason.message : "保存失败");
     }
@@ -76,6 +88,7 @@ export default function InterviewsPage({ data, refresh }: PageProps) {
         <Field label="会议链接" hint="仅支持 http/https；保存后可从首页直接打开。" span><input name="meetingLink" type="url" placeholder="https://..." defaultValue={editing?.meetingLink ?? ""} /></Field>
         <Field label="安排备注" hint="例如：提前 10 分钟入会、准备身份证、面试官部门。" span><textarea name="scheduleNotes" rows={3} defaultValue={editing?.scheduleNotes ?? ""} /></Field>
         <Field label="结果" hint="面试完成后，再从“待面试”改为结果待通知或最终结果。"><select name="result" defaultValue={editing?.result || "待面试"}>{results.map((result) => <option key={result.value} value={result.value}>{result.label}</option>)}</select></Field>
+        <label className="interview-sync-option field-span"><input type="checkbox" name="syncApplicationStage" defaultChecked /><span><strong>同步到投递进度</strong><small>AI 面试同步为“AI 面试”；一面、二面、三面同步为“业务面试”；HR 面同步为“HR 面”。Offer 或已终止岗位不会被覆盖。</small></span></label>
         <Field label="整体总结" span><textarea name="summary" rows={3} defaultValue={editing?.summary ?? ""} /></Field>
         <Field label="主要问题" span><textarea name="questions" rows={5} defaultValue={editing?.questions ?? ""} /></Field>
         <Field label="薄弱点"><textarea name="weakPoints" rows={4} defaultValue={editing?.weakPoints ?? ""} /></Field>
@@ -89,7 +102,7 @@ export default function InterviewsPage({ data, refresh }: PageProps) {
 }
 
 function InterviewCard({ item, refresh, onEdit }: { item: Interview; refresh: () => Promise<void>; onEdit: () => void }) {
-  return <article><div className="interview-card-head"><div><span>{item.round}</span><h3>{item.companyName} · {item.positionName}</h3><small><CalendarClock size={13}/>{item.interviewTime ? formatDateTime(item.interviewTime) : "面试时间待补充"}{item.interviewMode && <><i>·</i><Video size={13}/>{item.interviewMode}</>}</small></div><StatusBadge value={resultLabel(item.result)} /></div>{(item.meetingLink || item.scheduleNotes) && <div className="interview-schedule-note">{item.scheduleNotes && <p>{item.scheduleNotes}</p>}{item.meetingLink && <a href={item.meetingLink} target="_blank" rel="noreferrer"><ExternalLink size={14}/>打开会议链接</a>}</div>}{item.summary && <p className="interview-summary">{item.summary}</p>}<div className="interview-details">{item.questions && <section><h4>主要问题</h4><p>{item.questions}</p></section>}{item.weakPoints && <section><h4>薄弱点</h4><p>{item.weakPoints}</p></section>}{item.followUp && <section><h4>后续行动</h4><p>{item.followUp}</p></section>}</div><div className="interview-actions"><button type="button" className="text-button" onClick={onEdit}><Pencil size={14} />编辑</button><ConfirmButton className="text-button danger-text" confirmText="删除这条面试记录？" onConfirm={async () => { await api(`/interviews/${item.id}`, { method: "DELETE" }); await refresh(); }}><Trash2 size={14} />删除</ConfirmButton></div></article>;
+  return <article><div className="interview-card-head"><div><span>{item.round}</span><h3>{item.companyName} · {item.positionName}</h3><small><CalendarClock size={13}/>{item.interviewTime ? formatDateTime(item.interviewTime) : "面试时间待补充"}{item.interviewMode && <><i>·</i><Video size={13}/>{item.interviewMode}</>}</small></div><div className="interview-card-status"><small>{interviewStage(item.round)}</small><StatusBadge value={interviewResultLabel(item.result)} /></div></div>{(item.meetingLink || item.scheduleNotes) && <div className="interview-schedule-note">{item.scheduleNotes && <p>{item.scheduleNotes}</p>}{item.meetingLink && <a href={item.meetingLink} target="_blank" rel="noreferrer"><ExternalLink size={14}/>打开会议链接</a>}</div>}{item.summary && <p className="interview-summary">{item.summary}</p>}<div className="interview-details">{item.questions && <section><h4>主要问题</h4><p>{item.questions}</p></section>}{item.weakPoints && <section><h4>薄弱点</h4><p>{item.weakPoints}</p></section>}{item.followUp && <section><h4>后续行动</h4><p>{item.followUp}</p></section>}</div><div className="interview-actions"><button type="button" className="text-button" onClick={onEdit}><Pencil size={14} />编辑</button><ConfirmButton className="text-button danger-text" confirmText="删除这条面试记录？" onConfirm={async () => { await api(`/interviews/${item.id}`, { method: "DELETE" }); await refresh(); }}><Trash2 size={14} />删除</ConfirmButton></div></article>;
 }
 
 function toDateTimeLocal(value?: string) {

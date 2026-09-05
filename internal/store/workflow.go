@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/url"
 	"strings"
@@ -230,4 +231,69 @@ func (s *Store) DeleteInterview(ctx context.Context, id int64) error {
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+// SyncApplicationInterviewStage keeps the application pipeline intentionally
+// coarse while reflecting the concrete interview round and result. Finished
+// applications are never reopened by an interview edit.
+func (s *Store) SyncApplicationInterviewStage(ctx context.Context, applicationID int64, round, result string) (bool, error) {
+	if applicationID < 1 {
+		return false, errors.New("投递记录不存在")
+	}
+	round = strings.TrimSpace(round)
+	result = strings.TrimSpace(result)
+	if round == "" {
+		round = "一面"
+	}
+	validResults := map[string]bool{"待面试": true, "待确认": true, "通过": true, "未通过": true}
+	if !validResults[result] {
+		return false, errors.New("无效的面试结果")
+	}
+	targetStatus := "业务面试"
+	if round == "AI 面试" {
+		targetStatus = "AI 面试"
+	} else if round == "HR 面" {
+		targetStatus = "HR 面"
+	}
+	targetState := "已完成"
+	if result == "待面试" {
+		targetState = "已安排"
+	} else if result == "待确认" {
+		targetState = "已完成，等待结果"
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	var currentStatus, currentState, historyRaw string
+	if err := tx.QueryRowContext(ctx, `SELECT current_status,stage_state,COALESCE(status_history,'') FROM applications WHERE id=?`, applicationID).Scan(&currentStatus, &currentState, &historyRaw); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, errors.New("投递记录不存在")
+		}
+		return false, err
+	}
+	if currentStatus == "Offer" || currentStatus == "终止" || currentStatus == "已终止" || currentStatus == "未通过" || currentStatus == "主动放弃" || currentStatus == "流程结束" {
+		return false, nil
+	}
+	if currentStatus == targetStatus && currentState == targetState {
+		return false, nil
+	}
+	now := time.Now().Format(time.RFC3339)
+	history := parseHistory(historyRaw)
+	if currentStatus != targetStatus {
+		history = append(history, StatusEvent{From: currentStatus, To: targetStatus, Time: now, Note: "由" + round + "记录同步"})
+	}
+	historyJSON, err := json.Marshal(history)
+	if err != nil {
+		return false, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE applications SET current_status=?,stage_state=?,status_update_time=?,status_history=? WHERE id=?`, targetStatus, targetState, now, string(historyJSON), applicationID); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
 }

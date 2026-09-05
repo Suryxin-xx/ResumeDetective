@@ -160,10 +160,14 @@ func writeWorkbook(path string, applications []store.Application, interviews map
 	}
 
 	lastRow := len(applications) + 1
+	usedRange := fmt.Sprintf("A1:T%d", lastRow)
+	if err := f.SetSheetDimension(sheetName, usedRange); err != nil {
+		return fmt.Errorf("设置工作表有效区域: %w", err)
+	}
 	if len(applications) > 0 {
 		striped := true
 		if err := f.AddTable(sheetName, &excelize.Table{
-			Range:          fmt.Sprintf("A1:T%d", lastRow),
+			Range:          usedRange,
 			Name:           "Applications",
 			StyleName:      "TableStyleMedium2",
 			ShowRowStripes: &striped,

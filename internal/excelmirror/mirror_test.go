@@ -46,6 +46,13 @@ func TestSyncCreatesCompatibleTableWithoutDuplicateSheetFilter(t *testing.T) {
 	if value, err := f.GetCellValue(sheetName, "B2"); err != nil || value != "示例公司" {
 		t.Fatalf("B2=%q err=%v", value, err)
 	}
+	dimension, err := f.GetSheetDimension(sheetName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dimension != "A1:T2" {
+		t.Fatalf("worksheet dimension=%q, want A1:T2", dimension)
+	}
 
 	archive, err := zip.OpenReader(path)
 	if err != nil {
@@ -59,6 +66,9 @@ func TestSyncCreatesCompatibleTableWithoutDuplicateSheetFilter(t *testing.T) {
 	}
 	if !strings.Contains(tableXML, "<autoFilter") {
 		t.Fatal("structured table is missing its autoFilter")
+	}
+	if !strings.Contains(sheetXML, `<dimension ref="A1:T2"`) {
+		t.Fatal("worksheet dimension does not match the structured table range")
 	}
 }
 

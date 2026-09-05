@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -51,5 +52,49 @@ func TestTaskAndInterviewWorkflow(t *testing.T) {
 	}
 	if err := st.DeleteTask(ctx, taskID); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestInterviewStageSyncKeepsCoarseApplicationStatus(t *testing.T) {
+	ctx := context.Background()
+	st, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	appID, err := st.CreateApplication(ctx, CreateApplicationInput{CompanyName: "轮次公司", PositionName: "产品", CurrentStatus: "简历筛选", StageState: "待处理"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed, err := st.SyncApplicationInterviewStage(ctx, appID, "二面", "待面试")
+	if err != nil || !changed {
+		t.Fatalf("first sync changed=%v err=%v", changed, err)
+	}
+	app, err := st.GetApplication(ctx, appID)
+	if err != nil || app.CurrentStatus != "业务面试" || app.StageState != "已安排" || !strings.Contains(app.StatusHistory[len(app.StatusHistory)-1].Note, "二面") {
+		t.Fatalf("application=%#v err=%v", app, err)
+	}
+	changed, err = st.SyncApplicationInterviewStage(ctx, appID, "二面", "待面试")
+	if err != nil || changed {
+		t.Fatalf("idempotent sync changed=%v err=%v", changed, err)
+	}
+	changed, err = st.SyncApplicationInterviewStage(ctx, appID, "HR 面", "待确认")
+	if err != nil || !changed {
+		t.Fatalf("HR sync changed=%v err=%v", changed, err)
+	}
+	app, err = st.GetApplication(ctx, appID)
+	if err != nil || app.CurrentStatus != "HR 面" || app.StageState != "已完成，等待结果" {
+		t.Fatalf("HR application=%#v err=%v", app, err)
+	}
+	if err := st.UpdateApplication(ctx, appID, UpdateApplicationInput{CurrentStatus: "Offer", StageState: "已完成", Priority: app.Priority, City: app.City, Source: app.Source, JobLink: app.JobLink, Category: app.Category, Tags: app.Tags, JDText: app.JDText, AppliedAt: app.AppliedAt}); err != nil {
+		t.Fatal(err)
+	}
+	changed, err = st.SyncApplicationInterviewStage(ctx, appID, "三面", "未通过")
+	if err != nil || changed {
+		t.Fatalf("terminal sync changed=%v err=%v", changed, err)
+	}
+	app, _ = st.GetApplication(ctx, appID)
+	if app.CurrentStatus != "Offer" {
+		t.Fatalf("finished application was overwritten: %#v", app)
 	}
 }

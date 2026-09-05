@@ -1,6 +1,10 @@
 package settings
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestNormalizeThemeAndNavigation(t *testing.T) {
 	cfg := Defaults()
@@ -41,5 +45,36 @@ func TestUpdateNetworkDefaultsAndNormalization(t *testing.T) {
 	cfg.normalize()
 	if cfg.UpdateNetwork.Mode != "auto" || cfg.UpdateNetwork.ProxyURL != "http://127.0.0.1:7890" {
 		t.Fatalf("update network was not normalized: %#v", cfg.UpdateNetwork)
+	}
+}
+
+func TestNavigationDefaultsHideOptionalTasksOnce(t *testing.T) {
+	cfg := Defaults()
+	cfg.NavigationDefaultsVersion = 0
+	cfg.HiddenNavigation = []string{"ai", "tools"}
+	cfg.normalize()
+	if !containsString(cfg.HiddenNavigation, "tasks") || cfg.NavigationDefaultsVersion != 1 {
+		t.Fatalf("legacy navigation should hide optional tasks once: %#v", cfg.HiddenNavigation)
+	}
+	cfg.HiddenNavigation = []string{"ai", "tools"}
+	cfg.normalize()
+	if containsString(cfg.HiddenNavigation, "tasks") {
+		t.Fatalf("an explicit user choice must remain visible after migration")
+	}
+}
+
+func TestOpenMigratesLegacyNavigationConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"hiddenNavigation":["ai","tools"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager, err := Open(path, filepath.Join(dir, ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := manager.Get()
+	if cfg.NavigationDefaultsVersion != 1 || !containsString(cfg.HiddenNavigation, "tasks") {
+		t.Fatalf("legacy config was not migrated: %#v", cfg.HiddenNavigation)
 	}
 }

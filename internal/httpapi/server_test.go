@@ -83,6 +83,60 @@ func TestInterviewCanBeEdited(t *testing.T) {
 	}
 }
 
+func TestPreUpdateBackupPreservesApplications(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.Open(filepath.Join(dir, "source.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if _, err := st.CreateApplication(context.Background(), store.CreateApplicationInput{CompanyName: "更新备份公司", PositionName: "测试岗位"}); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{store: st, backupsDir: filepath.Join(dir, "backups")}
+	backupPath, err := server.createPreUpdateBackup(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	backupStore, err := store.Open(backupPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backupStore.Close()
+	items, err := backupStore.ListApplications(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].CompanyName != "更新备份公司" {
+		t.Fatalf("unexpected backup content: %#v", items)
+	}
+}
+
+func TestInterviewStageCanSyncApplication(t *testing.T) {
+	h := testHandler(t)
+	createApplication := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/applications", bytes.NewBufferString(`{"companyName":"示例","positionName":"后端","currentStatus":"简历筛选","stageState":"待处理"}`))
+	createApplication.Host = "127.0.0.1:8765"
+	applicationResponse := httptest.NewRecorder()
+	h.ServeHTTP(applicationResponse, createApplication)
+	if applicationResponse.Code != http.StatusCreated {
+		t.Fatalf("create application: %d %s", applicationResponse.Code, applicationResponse.Body.String())
+	}
+	syncRequest := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/applications/1/interview-stage", bytes.NewBufferString(`{"round":"二面","result":"待面试"}`))
+	syncRequest.Host = "127.0.0.1:8765"
+	syncResponse := httptest.NewRecorder()
+	h.ServeHTTP(syncResponse, syncRequest)
+	if syncResponse.Code != http.StatusOK || !bytes.Contains(syncResponse.Body.Bytes(), []byte(`"changed":true`)) {
+		t.Fatalf("sync stage: %d %s", syncResponse.Code, syncResponse.Body.String())
+	}
+	listRequest := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/api/applications", nil)
+	listRequest.Host = "127.0.0.1:8765"
+	listResponse := httptest.NewRecorder()
+	h.ServeHTTP(listResponse, listRequest)
+	if listResponse.Code != http.StatusOK || !bytes.Contains(listResponse.Body.Bytes(), []byte(`"currentStatus":"业务面试"`)) || !bytes.Contains(listResponse.Body.Bytes(), []byte(`"stageState":"已安排"`)) || !bytes.Contains(listResponse.Body.Bytes(), []byte(`由二面记录同步`)) {
+		t.Fatalf("list applications: %d %s", listResponse.Code, listResponse.Body.String())
+	}
+}
+
 func TestRejectsForeignHost(t *testing.T) {
 	h := testHandler(t)
 	req := httptest.NewRequest(http.MethodGet, "http://evil.example/api/health", nil)
@@ -146,6 +200,57 @@ func TestUploadAndServeResume(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK || rec.Header().Values("Content-Length") == nil || len(rec.Header().Values("Content-Length")) != 1 {
 		t.Fatalf("serve resume: %d headers=%v", rec.Code, rec.Header())
+	}
+}
+
+func TestLinkExistingResumeAcrossApplications(t *testing.T) {
+	h := testHandler(t)
+	for _, payload := range []string{
+		`{"companyName":"源公司","positionName":"产品"}`,
+		`{"companyName":"目标公司","positionName":"运营"}`,
+	} {
+		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/applications", bytes.NewBufferString(payload))
+		req.Host = "127.0.0.1:8765"
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("create application: %d %s", rec.Code, rec.Body.String())
+		}
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("resume", "shared.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = part.Write([]byte("%PDF-1.4\nshared\n%%EOF"))
+	_ = writer.Close()
+	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/applications/1/resume", &body)
+	req.Host = "127.0.0.1:8765"
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("upload: %d %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/applications/2/resume/link", bytes.NewBufferString(`{"sourceApplicationId":1}`))
+	req.Host = "127.0.0.1:8765"
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"fileName":"shared.pdf"`)) {
+		t.Fatalf("link: %d %s", rec.Code, rec.Body.String())
+	}
+
+	for _, id := range []string{"1", "2"} {
+		req = httptest.NewRequest(http.MethodGet, "http://127.0.0.1/resume/"+id, nil)
+		req.Host = "127.0.0.1:8765"
+		rec = httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte("shared")) {
+			t.Fatalf("serve linked resume %s: %d %s", id, rec.Code, rec.Body.String())
+		}
 	}
 }
 
