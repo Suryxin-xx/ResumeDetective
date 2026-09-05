@@ -289,7 +289,11 @@ func (s *Store) SyncApplicationInterviewStage(ctx context.Context, applicationID
 	if err != nil {
 		return false, err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE applications SET current_status=?,stage_state=?,status_update_time=?,status_history=? WHERE id=?`, targetStatus, targetState, now, string(historyJSON), applicationID); err != nil {
+	query := `UPDATE applications SET current_status=?,stage_state=?,status_update_time=?,status_history=? WHERE id=?`
+	if currentStatus != targetStatus {
+		query = `UPDATE applications SET current_status=?,stage_state=?,status_update_time=?,status_history=?,stage_time_type='',stage_scheduled_at='',stage_completed_at='',stage_time_note='' WHERE id=?`
+	}
+	if _, err := tx.ExecContext(ctx, query, targetStatus, targetState, now, string(historyJSON), applicationID); err != nil {
 		return false, err
 	}
 	if err := tx.Commit(); err != nil {

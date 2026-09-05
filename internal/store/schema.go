@@ -1,6 +1,6 @@
 package store
 
-const SchemaVersion = 9
+const SchemaVersion = 10
 
 const schemaV6 = `
 CREATE TABLE IF NOT EXISTS resumes (
@@ -31,6 +31,10 @@ CREATE TABLE IF NOT EXISTS applications (
     application_deadline TEXT DEFAULT '',
     next_action_due_at TEXT DEFAULT '',
     last_follow_up_at TEXT DEFAULT '',
+    stage_time_type TEXT DEFAULT '',
+    stage_scheduled_at TEXT DEFAULT '',
+    stage_completed_at TEXT DEFAULT '',
+    stage_time_note TEXT DEFAULT '',
     status_history TEXT DEFAULT '',
     FOREIGN KEY (resume_id) REFERENCES resumes(id) ON DELETE CASCADE
 );
@@ -92,5 +96,5 @@ CREATE INDEX IF NOT EXISTS idx_applications_updated ON applications(status_updat
 CREATE INDEX IF NOT EXISTS idx_tasks_state_due ON job_tasks(state, due_date);
 CREATE INDEX IF NOT EXISTS idx_interviews_application ON interviews(application_id);
 CREATE INDEX IF NOT EXISTS idx_offers_deadline ON offers(deadline);
-PRAGMA user_version = 9;
+PRAGMA user_version = 10;
 `

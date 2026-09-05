@@ -3,6 +3,7 @@ import { api, formatDateTime } from "../api";
 import { EmptyState, PageHeader, Panel, StatusBadge } from "../components";
 import { stageStateLabel } from "../applicationProgress";
 import { interviewProgressLabel, preferredInterview } from "../interviewProgress";
+import { stageTimeLabel, stageTimeRelative, stageTimeTone, stageTimeValue } from "../stageSchedule";
 import type { PageProps } from "../App";
 import type { Application, Interview } from "../types";
 
@@ -40,6 +41,9 @@ export default function OverviewV2Page({ data, go, refresh }: PageProps) {
   const hiddenFocusInterviewCount = Math.max(0, focusInterviews.length - visibleFocusInterviews.length);
   const grouped = stageGroups.map((group) => ({ ...group, count: group.keys.reduce((sum, key) => sum + (data.dashboard.stageCounts[key] || 0), 0) }));
   const maxStage = Math.max(1, ...grouped.map((item) => item.count));
+  const schedules=active.filter(item=>item.stageScheduledAt&&!item.stageCompletedAt).sort((a,b)=>stageTimeValue(a)-stageTimeValue(b)||b.priority-a.priority);
+  const visibleSchedules=schedules.slice(0,6);
+  const overdueSchedules=schedules.filter(item=>stageTimeTone(item)==="overdue").length;
   const pulse = [
     {value:"待处理",label:"待我处理",description:"测评、材料或准备还没完成",count:active.filter(item=>item.stageState==="待处理").length},
     {value:"已安排",label:"已安排时间",description:"已经定好时间，等待进行",count:active.filter(item=>item.stageState==="已安排").length},
@@ -66,6 +70,7 @@ export default function OverviewV2Page({ data, go, refresh }: PageProps) {
       </article>)}</div>
       {hiddenFocusInterviewCount > 0 && <div className="interview-focus-more"><button className="secondary-button" onClick={()=>go("interviews")}>还有 {hiddenFocusInterviewCount} 条重点面试，查看全部 <ArrowRight size={14}/></button></div>}
     </Panel>}
+    {schedules.length>0&&<Panel className="stage-schedule-panel" title="近期环节安排" description={overdueSchedules?`${overdueSchedules} 项已逾期；完成后请及时改为“等待公司结果”。`:"截止测评与固定安排统一按时间排列。"} action={<button className="text-button" onClick={()=>go("applications?sort=schedule")}>查看全部安排 <ArrowRight size={14}/></button>}><div className="stage-schedule-list">{visibleSchedules.map(item=><button key={item.id} onClick={()=>go(`applications?application=${item.id}`)}><span className={`schedule-date tone-${stageTimeTone(item)}`}><CalendarClock size={15}/><strong>{stageTimeRelative(item)}</strong></span><span className="schedule-role"><strong>{item.companyName}</strong><small>{item.positionName}</small></span><span className="schedule-stage"><StatusBadge value={item.currentStatus}/><small>{item.stageTimeType==="deadline"?"截止时间":"固定时间"}</small></span><span className="schedule-note">{item.stageTimeNote||stageTimeLabel(item)}</span><ArrowRight size={15}/></button>)}</div></Panel>}
     <div className="overview-main-grid">
       <Panel className="flow-pulse-panel" title="流程脉搏" description="按责任方归类当前进展，不再用固定的停滞名单占满首页。">
         <div className="flow-pulse-grid">{pulse.map(item=><button key={item.value} onClick={()=>go(`applications?stage=${encodeURIComponent(item.value)}`)}><span>{item.label}</span><strong>{item.count}</strong><small>{item.description}</small><i><ArrowRight size={14}/></i></button>)}</div>

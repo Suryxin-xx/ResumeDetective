@@ -49,7 +49,10 @@
       "category": "供应链",
       "tags": "数据分析, 制造业",
       "currentStatus": "测评",
-      "stageState": "待处理",
+      "stageState": "已安排",
+      "stageTimeType": "deadline",
+      "stageScheduledAt": "2026-09-07T23:59",
+      "stageTimeNote": "在线测评链接在截止时间后失效。",
       "priority": 5,
       "appliedAt": "2026-07-25",
       "jdText": "参与供应链指标分析、流程梳理和数字化项目落地。"
@@ -63,6 +66,9 @@
       "tags": "机器人, 管培生",
       "currentStatus": "AI 面试",
       "stageState": "已安排",
+      "stageTimeType": "deadline",
+      "stageScheduledAt": "2026-09-09",
+      "stageTimeNote": "通知中仅给出完成日期，可在当天任意时间作答。",
       "priority": 3,
       "appliedAt": "2026-07-21",
       "jdText": "负责用户研究、产品数据分析与运营项目推进。"

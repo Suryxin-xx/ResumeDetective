@@ -8,6 +8,7 @@
   把意向岗位、投递流转、待办、面试复盘、简历与 JD 收进一条清晰的求职主线。
 
   [![Release](https://img.shields.io/github/v/release/Suryxin-xx/ResumeDetective?display_name=tag&sort=semver)](https://github.com/Suryxin-xx/ResumeDetective/releases)
+  [![累计 Release 下载](https://img.shields.io/github/downloads/Suryxin-xx/ResumeDetective/total?label=%E7%B4%AF%E8%AE%A1%20Release%20%E4%B8%8B%E8%BD%BD&color=5b7894)](https://github.com/Suryxin-xx/ResumeDetective/releases)
   [![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-2563eb)](#下载与使用)
   [![Go](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)](go.mod)
   [![License](https://img.shields.io/github/license/Suryxin-xx/ResumeDetective)](LICENSE)
@@ -18,7 +19,7 @@
 <p align="center"><img src="screenshots/v4-overview.png" alt="ResumeDetective 总览页面" width="100%"></p>
 
 > [!TIP]
-> **v4.4.0 更新：** 投递管理新增进度快捷更新与右侧详情抽屉，首页改为“流程脉搏”；一份简历可直接关联多个岗位，面试轮次可同步到投递进度。自动更新会先建立 SQLite 一致性备份。数据库 schema 仍为 v9，不覆盖既有投递、简历和配置。
+> **v4.5.0 开发中：** “已安排时间”现在可区分截止时间与固定时间，并记录计划时间、实际完成时间和备注；首页集中显示近期安排，投递管理支持按时间筛选和排序。数据库以增量方式升级到 schema v10，不覆盖既有投递、简历和配置。
 
 ## 为什么做这个工具
 
@@ -34,8 +35,8 @@
 
 | 模块 | 能做什么 |
 | --- | --- |
-| 投递管理 | 按招聘环节、进展、岗位类型、标签和关键词筛选；点击环节快速更新，右侧抽屉维护完整资料和流转记录 |
-| 总览与行动 | 用核心数字、流程脉搏、重点面试和最近变化判断推进重点；业务面试与 HR 面集中展示时间、形式、链接和备忘 |
+| 投递管理 | 按招聘环节、进展、环节时间、岗位类型、标签和关键词筛选；点击环节快速更新，右侧抽屉维护完整资料和流转记录 |
+| 总览与行动 | 用核心数字、近期安排、流程脉搏、重点面试和最近变化判断推进重点；截止测评与固定面试可统一按时间查看 |
 | 意向岗位 | 先保存公司、岗位和 JD，准备好后可一键转为正式投递 |
 | 简历与复盘 | 简历按真实文件版本归并并展示关联岗位；面试把安排信息与复盘放在同一条时间线，保留问题、结果和改进项 |
 | Offer 对比 | 记录薪资结构、奖金、签字费、地点、成长、强度、稳定性与截止日期，自动估算总包并横向比较 |
@@ -192,7 +193,7 @@ go run ./cmd/resumedetective --data-dir .\local-artifacts\dev-data --no-browser
 ### Windows 正式构建
 
 ```powershell
-.\scripts\atuo.bat -Version 4.4.0
+.\scripts\atuo.bat -Version 4.5.0
 ```
 
 构建入口依次执行仓库安全扫描、React/TypeScript 构建、Go 测试、`go vet`、Windows GUI EXE 构建、版本资源写入、虚构演示库生成、ZIP 压缩和 SHA-256 生成。

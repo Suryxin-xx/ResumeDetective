@@ -27,6 +27,7 @@ type column struct {
 var columns = []column{
 	{"记录ID", 10}, {"公司", 20}, {"岗位", 25}, {"城市", 14},
 	{"当前环节", 16}, {"当前情况", 20}, {"岗位类型", 16}, {"自定义标签", 24},
+	{"时间性质", 14}, {"环节时间", 20}, {"实际完成时间", 20}, {"时间备注", 32},
 	{"优先级", 10}, {"状态更新时间", 20}, {"投递日期", 15}, {"网申截止", 18},
 	{"下一步行动", 36}, {"下一步时间", 20}, {"最后跟进", 18}, {"面试反馈摘要", 44},
 	{"简历路径", 36}, {"投递来源", 18}, {"岗位原始链接", 42}, {"JD 原文快照", 70},
@@ -125,7 +126,7 @@ func writeWorkbook(path string, applications []store.Application, interviews map
 			return fmt.Errorf("设置列宽: %w", err)
 		}
 	}
-	if err := f.SetCellStyle(sheetName, "A1", "T1", headerStyle); err != nil {
+	if err := f.SetCellStyle(sheetName, "A1", "X1", headerStyle); err != nil {
 		return fmt.Errorf("设置表头样式: %w", err)
 	}
 	_ = f.SetRowHeight(sheetName, 1, 26)
@@ -135,6 +136,8 @@ func writeWorkbook(path string, applications []store.Application, interviews map
 		values := []any{
 			application.ID, application.CompanyName, application.PositionName, optionalString(application.City),
 			application.CurrentStatus, application.StageState, optionalString(application.Category), optionalString(application.Tags),
+			optionalString(stageTimeTypeLabel(application.StageTimeType)), optionalString(localTimestamp(application.StageScheduledAt)),
+			optionalString(localTimestamp(application.StageCompletedAt)), optionalString(application.StageTimeNote),
 			application.Priority, optionalString(localTimestamp(application.StatusUpdateTime)), optionalString(application.AppliedAt),
 			optionalString(application.ApplicationDeadline), optionalString(application.NextAction), optionalString(application.NextActionDueAt),
 			optionalString(application.LastFollowUpAt), optionalString(interviews[application.ID]), optionalString(application.ResumePath),
@@ -144,12 +147,12 @@ func writeWorkbook(path string, applications []store.Application, interviews map
 		if err := f.SetSheetRow(sheetName, cell, &values); err != nil {
 			return fmt.Errorf("写入第 %d 行: %w", row, err)
 		}
-		if err := f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("T%d", row), bodyStyle); err != nil {
+		if err := f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("X%d", row), bodyStyle); err != nil {
 			return fmt.Errorf("设置第 %d 行样式: %w", row, err)
 		}
 		_ = f.SetRowHeight(sheetName, row, 48)
 		if link := strings.TrimSpace(application.JobLink); link != "" {
-			cell := fmt.Sprintf("S%d", row)
+			cell := fmt.Sprintf("W%d", row)
 			if err := f.SetCellHyperLink(sheetName, cell, link, "External"); err != nil {
 				return fmt.Errorf("设置岗位链接: %w", err)
 			}
@@ -160,7 +163,7 @@ func writeWorkbook(path string, applications []store.Application, interviews map
 	}
 
 	lastRow := len(applications) + 1
-	usedRange := fmt.Sprintf("A1:T%d", lastRow)
+	usedRange := fmt.Sprintf("A1:X%d", lastRow)
 	if err := f.SetSheetDimension(sheetName, usedRange); err != nil {
 		return fmt.Errorf("设置工作表有效区域: %w", err)
 	}
@@ -205,7 +208,7 @@ func writeWorkbook(path string, applications []store.Application, interviews map
 	}); err != nil {
 		return fmt.Errorf("冻结表头: %w", err)
 	}
-	if err := f.SetColVisible(sheetName, "T", false); err != nil {
+	if err := f.SetColVisible(sheetName, "X", false); err != nil {
 		return fmt.Errorf("隐藏 JD 快照列: %w", err)
 	}
 	if err := f.SaveAs(path); err != nil {
@@ -214,16 +217,31 @@ func writeWorkbook(path string, applications []store.Application, interviews map
 	return nil
 }
 
+func stageTimeTypeLabel(value string) string {
+	switch strings.TrimSpace(value) {
+	case "deadline":
+		return "截止时间"
+	case "appointment":
+		return "固定时间"
+	default:
+		return ""
+	}
+}
+
 func localTimestamp(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return ""
 	}
-	parsed, err := time.Parse(time.RFC3339, value)
-	if err != nil {
-		return value
+	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+		return parsed.Local().Format("2006-01-02 15:04:05")
 	}
-	return parsed.Local().Format("2006-01-02 15:04:05")
+	for _, layout := range []string{"2006-01-02T15:04", "2006-01-02 15:04:05"} {
+		if parsed, err := time.ParseInLocation(layout, value, time.Local); err == nil {
+			return parsed.Format("2006-01-02 15:04:05")
+		}
+	}
+	return value
 }
 
 func nonEmpty(values []string) []string {

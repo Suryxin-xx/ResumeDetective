@@ -43,7 +43,7 @@ type Server struct {
 	pickDirectory func(context.Context) (string, error)
 }
 
-var Version = "4.4.0-dev"
+var Version = "4.5.0-dev"
 
 type Options struct {
 	Settings      *settings.Manager

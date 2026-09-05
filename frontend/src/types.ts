@@ -21,6 +21,10 @@ export type Application = {
   applicationDeadline: string;
   nextActionDueAt: string;
   lastFollowUpAt: string;
+  stageTimeType: "" | "deadline" | "appointment";
+  stageScheduledAt: string;
+  stageCompletedAt: string;
+  stageTimeNote: string;
   statusHistory: StatusEvent[];
 };
 

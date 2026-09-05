@@ -57,6 +57,10 @@ type Application struct {
 	ApplicationDeadline string        `json:"applicationDeadline"`
 	NextActionDueAt     string        `json:"nextActionDueAt"`
 	LastFollowUpAt      string        `json:"lastFollowUpAt"`
+	StageTimeType       string        `json:"stageTimeType"`
+	StageScheduledAt    string        `json:"stageScheduledAt"`
+	StageCompletedAt    string        `json:"stageCompletedAt"`
+	StageTimeNote       string        `json:"stageTimeNote"`
 	StatusHistory       []StatusEvent `json:"statusHistory"`
 }
 
@@ -78,6 +82,10 @@ type CreateApplicationInput struct {
 	ApplicationDeadline string `json:"applicationDeadline"`
 	NextActionDueAt     string `json:"nextActionDueAt"`
 	LastFollowUpAt      string `json:"lastFollowUpAt"`
+	StageTimeType       string `json:"stageTimeType"`
+	StageScheduledAt    string `json:"stageScheduledAt"`
+	StageCompletedAt    string `json:"stageCompletedAt"`
+	StageTimeNote       string `json:"stageTimeNote"`
 }
 
 type UpdateApplicationInput struct {
@@ -95,6 +103,10 @@ type UpdateApplicationInput struct {
 	ApplicationDeadline string `json:"applicationDeadline"`
 	NextActionDueAt     string `json:"nextActionDueAt"`
 	LastFollowUpAt      string `json:"lastFollowUpAt"`
+	StageTimeType       string `json:"stageTimeType"`
+	StageScheduledAt    string `json:"stageScheduledAt"`
+	StageCompletedAt    string `json:"stageCompletedAt"`
+	StageTimeNote       string `json:"stageTimeNote"`
 }
 
 type Dashboard struct {
@@ -130,6 +142,10 @@ func Open(path string) (*Store, error) {
 	if err := ensureInterviewScheduleColumns(db); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("升级面试安排字段: %w", err)
+	}
+	if err := ensureApplicationScheduleColumns(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("升级环节时间字段: %w", err)
 	}
 	if err := repairLegacyResumeRows(db); err != nil {
 		db.Close()
@@ -184,7 +200,9 @@ SELECT a.id, a.resume_id, r.company_name, r.position_name, r.city, r.application
        r.job_link, r.job_category, r.tags, COALESCE(r.jd_text,''), r.file_path,
        a.current_status, a.stage_state, a.priority, COALESCE(a.status_update_time,''),
        COALESCE(a.next_action,''), COALESCE(a.applied_at,''), COALESCE(a.application_deadline,''),
-       COALESCE(a.next_action_due_at,''), COALESCE(a.last_follow_up_at,''), COALESCE(a.status_history,'')
+       COALESCE(a.next_action_due_at,''), COALESCE(a.last_follow_up_at,''),
+       COALESCE(a.stage_time_type,''), COALESCE(a.stage_scheduled_at,''), COALESCE(a.stage_completed_at,''),
+       COALESCE(a.stage_time_note,''), COALESCE(a.status_history,'')
 FROM applications a JOIN resumes r ON r.id=a.resume_id
 ORDER BY CASE WHEN a.current_status IN ('终止','已终止','未通过','主动放弃','流程结束') THEN 1 ELSE 0 END,
          a.priority DESC, a.status_update_time DESC, a.id DESC`)
@@ -199,7 +217,8 @@ ORDER BY CASE WHEN a.current_status IN ('终止','已终止','未通过','主动
 		if err := rows.Scan(&item.ID, &item.ResumeID, &item.CompanyName, &item.PositionName, &item.City, &item.Source,
 			&item.JobLink, &item.Category, &item.Tags, &item.JDText, &item.ResumePath, &item.CurrentStatus,
 			&item.StageState, &item.Priority, &item.StatusUpdateTime, &item.NextAction, &item.AppliedAt,
-			&item.ApplicationDeadline, &item.NextActionDueAt, &item.LastFollowUpAt, &history); err != nil {
+			&item.ApplicationDeadline, &item.NextActionDueAt, &item.LastFollowUpAt, &item.StageTimeType,
+			&item.StageScheduledAt, &item.StageCompletedAt, &item.StageTimeNote, &history); err != nil {
 			return nil, err
 		}
 		item.StatusHistory = parseHistory(history)
@@ -242,6 +261,9 @@ func (s *Store) CreateApplication(ctx context.Context, in CreateApplicationInput
 	if in.Priority < 0 || in.Priority > 5 {
 		return 0, errors.New("优先级必须在 0 到 5 之间")
 	}
+	if err := validateStageSchedule(in.StageTimeType, in.StageScheduledAt, in.StageCompletedAt); err != nil {
+		return 0, err
+	}
 	now := time.Now().Format(time.RFC3339)
 	if strings.TrimSpace(in.AppliedAt) == "" {
 		in.AppliedAt = now[:10]
@@ -264,9 +286,10 @@ VALUES(?,?,?,?,?,?,?,?,?,?)`, in.CompanyName, in.PositionName, in.ResumePath, st
 		return 0, err
 	}
 	res, err = tx.ExecContext(ctx, `INSERT INTO applications
-(resume_id,current_status,stage_state,priority,status_update_time,applied_at,application_deadline,next_action,next_action_due_at,last_follow_up_at,status_history)
-VALUES(?,?,?,?,?,?,?,?,?,?,?)`, resumeID, in.CurrentStatus, in.StageState, in.Priority, now, strings.TrimSpace(in.AppliedAt),
-		strings.TrimSpace(in.ApplicationDeadline), strings.TrimSpace(in.NextAction), strings.TrimSpace(in.NextActionDueAt), strings.TrimSpace(in.LastFollowUpAt), string(history))
+(resume_id,current_status,stage_state,priority,status_update_time,applied_at,application_deadline,next_action,next_action_due_at,last_follow_up_at,stage_time_type,stage_scheduled_at,stage_completed_at,stage_time_note,status_history)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, resumeID, in.CurrentStatus, in.StageState, in.Priority, now, strings.TrimSpace(in.AppliedAt),
+		strings.TrimSpace(in.ApplicationDeadline), strings.TrimSpace(in.NextAction), strings.TrimSpace(in.NextActionDueAt), strings.TrimSpace(in.LastFollowUpAt),
+		strings.TrimSpace(in.StageTimeType), strings.TrimSpace(in.StageScheduledAt), strings.TrimSpace(in.StageCompletedAt), strings.TrimSpace(in.StageTimeNote), string(history))
 	if err != nil {
 		return 0, err
 	}
@@ -293,27 +316,59 @@ func (s *Store) UpdateApplication(ctx context.Context, id int64, in UpdateApplic
 	if in.Priority < 0 || in.Priority > 5 {
 		return errors.New("优先级必须在 0 到 5 之间")
 	}
+	if err := validateStageSchedule(in.StageTimeType, in.StageScheduledAt, in.StageCompletedAt); err != nil {
+		return err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	var resumeID int64
-	var oldStatus, oldStageState, oldStatusUpdateTime, historyRaw string
-	if err := tx.QueryRowContext(ctx, "SELECT resume_id,current_status,stage_state,COALESCE(status_update_time,''),COALESCE(status_history,'') FROM applications WHERE id=?", id).Scan(&resumeID, &oldStatus, &oldStageState, &oldStatusUpdateTime, &historyRaw); err != nil {
+	var oldStatus, oldStageState, oldStatusUpdateTime, oldTimeType, oldScheduledAt, oldCompletedAt, oldTimeNote, historyRaw string
+	if err := tx.QueryRowContext(ctx, `SELECT resume_id,current_status,stage_state,COALESCE(status_update_time,''),
+		COALESCE(stage_time_type,''),COALESCE(stage_scheduled_at,''),COALESCE(stage_completed_at,''),COALESCE(stage_time_note,''),COALESCE(status_history,'')
+		FROM applications WHERE id=?`, id).Scan(&resumeID, &oldStatus, &oldStageState, &oldStatusUpdateTime, &oldTimeType, &oldScheduledAt, &oldCompletedAt, &oldTimeNote, &historyRaw); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return errors.New("投递记录不存在")
 		}
 		return err
 	}
 	now := time.Now().Format(time.RFC3339)
+	in.StageTimeType = strings.TrimSpace(in.StageTimeType)
+	in.StageScheduledAt = strings.TrimSpace(in.StageScheduledAt)
+	in.StageCompletedAt = strings.TrimSpace(in.StageCompletedAt)
+	in.StageTimeNote = strings.TrimSpace(in.StageTimeNote)
+	// An appointment or deadline belongs to one recruitment stage. When a
+	// client changes stages without explicitly changing the schedule fields,
+	// discard the old stage's values instead of leaking them into the new one.
+	if oldStatus != in.CurrentStatus &&
+		oldTimeType == in.StageTimeType && oldScheduledAt == in.StageScheduledAt &&
+		oldCompletedAt == in.StageCompletedAt && oldTimeNote == in.StageTimeNote {
+		in.StageTimeType = ""
+		in.StageScheduledAt = ""
+		in.StageCompletedAt = ""
+		in.StageTimeNote = ""
+	}
+	if oldStageState == "已安排" && in.StageState == "已完成，等待结果" && in.StageScheduledAt != "" && in.StageCompletedAt == "" {
+		in.StageCompletedAt = now
+	}
 	statusUpdateTime := oldStatusUpdateTime
-	if oldStatus != in.CurrentStatus || oldStageState != in.StageState || statusUpdateTime == "" {
+	scheduleChanged := oldTimeType != in.StageTimeType || oldScheduledAt != in.StageScheduledAt || oldCompletedAt != in.StageCompletedAt || oldTimeNote != in.StageTimeNote
+	if oldStatus != in.CurrentStatus || oldStageState != in.StageState || scheduleChanged || statusUpdateTime == "" {
 		statusUpdateTime = now
 	}
 	history := parseHistory(historyRaw)
 	if oldStatus != in.CurrentStatus {
 		history = append(history, StatusEvent{From: oldStatus, To: in.CurrentStatus, Time: now, Note: "手动更新"})
+	} else if oldStageState != in.StageState {
+		history = append(history, StatusEvent{To: in.CurrentStatus, Time: now, Note: fmt.Sprintf("环节进展：%s → %s", oldStageState, in.StageState)})
+	} else if scheduleChanged {
+		note := "更新环节时间"
+		if in.StageScheduledAt != "" {
+			note = "安排" + stageTimeTypeLabel(in.StageTimeType) + "：" + in.StageScheduledAt
+		}
+		history = append(history, StatusEvent{To: in.CurrentStatus, Time: now, Note: note})
 	}
 	historyJSON, err := json.Marshal(history)
 	if err != nil {
@@ -323,12 +378,47 @@ func (s *Store) UpdateApplication(ctx context.Context, id int64, in UpdateApplic
 		strings.TrimSpace(in.City), strings.TrimSpace(in.Source), strings.TrimSpace(in.JobLink), strings.TrimSpace(in.Category), strings.TrimSpace(in.Tags), in.JDText, resumeID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE applications SET current_status=?,stage_state=?,next_action=?,priority=?,applied_at=?,application_deadline=?,next_action_due_at=?,last_follow_up_at=?,status_update_time=?,status_history=? WHERE id=?`,
+	if _, err := tx.ExecContext(ctx, `UPDATE applications SET current_status=?,stage_state=?,next_action=?,priority=?,applied_at=?,application_deadline=?,next_action_due_at=?,last_follow_up_at=?,stage_time_type=?,stage_scheduled_at=?,stage_completed_at=?,stage_time_note=?,status_update_time=?,status_history=? WHERE id=?`,
 		in.CurrentStatus, in.StageState, strings.TrimSpace(in.NextAction), in.Priority, strings.TrimSpace(in.AppliedAt), strings.TrimSpace(in.ApplicationDeadline),
-		strings.TrimSpace(in.NextActionDueAt), strings.TrimSpace(in.LastFollowUpAt), statusUpdateTime, string(historyJSON), id); err != nil {
+		strings.TrimSpace(in.NextActionDueAt), strings.TrimSpace(in.LastFollowUpAt), in.StageTimeType, in.StageScheduledAt, in.StageCompletedAt, in.StageTimeNote, statusUpdateTime, string(historyJSON), id); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+func validateStageSchedule(timeType, scheduledAt, completedAt string) error {
+	timeType = strings.TrimSpace(timeType)
+	scheduledAt = strings.TrimSpace(scheduledAt)
+	completedAt = strings.TrimSpace(completedAt)
+	if timeType != "" && timeType != "deadline" && timeType != "appointment" {
+		return errors.New("无效的环节时间类型")
+	}
+	if scheduledAt != "" && timeType == "" {
+		return errors.New("填写环节时间时请选择截止时间或固定时间")
+	}
+	for _, value := range []string{scheduledAt, completedAt} {
+		if value == "" {
+			continue
+		}
+		valid := false
+		for _, layout := range []string{"2006-01-02", "2006-01-02T15:04", time.RFC3339} {
+			if _, err := time.Parse(layout, value); err == nil {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			return errors.New("环节时间格式不正确")
+		}
+	}
+	return nil
+}
+
+func stageTimeTypeLabel(value string) string {
+	if value == "deadline" {
+		return "截止时间"
+	}
+	return "固定时间"
 }
 
 func (s *Store) DeleteApplication(ctx context.Context, id int64) error {
