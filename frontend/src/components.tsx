@@ -61,6 +61,8 @@ export function Modal({ title, subtitle, onClose, children, wide = false }: Prop
 
   useLayoutEffect(() => {
     const dialog = dialogRef.current;
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
 
     if (dialog) {
       const firstFocusable = getFocusableElements(dialog)[0];
@@ -100,6 +102,7 @@ export function Modal({ title, subtitle, onClose, children, wide = false }: Prop
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousBodyOverflow;
       const previousElement = restoreFocusRef.current;
       if (previousElement?.isConnected) previousElement.focus({ preventScroll: true });
     };

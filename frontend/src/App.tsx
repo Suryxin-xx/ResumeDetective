@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BriefcaseBusiness, Building2, CalendarCheck2, FileText, LayoutDashboard, ListTodo,
-  MessageSquareText, Settings, Sparkles, Target, Wrench, Plus, PanelLeftClose, PanelLeftOpen, UserRound, BadgeDollarSign,
+  MessageSquareText, Settings, Sparkles, Target, Wrench, Plus, PanelLeftClose, PanelLeftOpen, UserRound, BadgeDollarSign, ExternalLink, X,
 } from "lucide-react";
 import { api } from "./api";
-import type { Application, Dashboard, Interview, JobTarget, Material, MigrationStatus, Offer, Profile, SettingsView, SystemInfo, Task } from "./types";
+import type { Application, Dashboard, Interview, JobTarget, Material, MigrationStatus, Offer, Profile, SettingsView, SystemInfo, Task, UpdateInfo } from "./types";
 import OverviewPage from "./pages/OverviewV2Page";
 import ApplicationsPage from "./pages/ApplicationsPage";
 import TargetsPage from "./pages/TargetsPage";
@@ -16,6 +16,7 @@ import ToolsPage from "./pages/ToolsPage";
 import SettingsPage from "./pages/SettingsPage";
 import ProfilePage from "./pages/ProfileV2Page";
 import OffersPage from "./pages/OffersPage";
+import "./update-notice.css";
 
 export type DataState = {
   dashboard: Dashboard;
@@ -32,6 +33,39 @@ export type DataState = {
 };
 
 const emptyDashboard: Dashboard = { total: 0, active: 0, interview: 0, offers: 0, openTasks: 0, stageCounts: {}, demo: false };
+
+const UPDATE_CACHE_KEY = "resumedetective.update.app.v1";
+const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+type CachedUpdate = { checkedAt: number; info: UpdateInfo };
+
+function readCachedUpdate(): CachedUpdate | null {
+  try {
+    const raw = window.localStorage.getItem(UPDATE_CACHE_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<CachedUpdate>;
+    if (!value || typeof value.checkedAt !== "number" || !value.info || typeof value.info.latest !== "string") return null;
+    return value as CachedUpdate;
+  } catch {
+    return null;
+  }
+}
+
+function cacheUpdate(info: UpdateInfo): void {
+  try {
+    window.localStorage.setItem(UPDATE_CACHE_KEY, JSON.stringify({ checkedAt: Date.now(), info } satisfies CachedUpdate));
+  } catch {
+    // Private browsing or a disabled storage implementation should not affect startup.
+  }
+}
+
+function hasExplicitUpdateCheck(): boolean {
+  try {
+    return new URLSearchParams(window.location.hash.split("?")[1] || "").get("checkUpdate") === "app";
+  } catch {
+    return false;
+  }
+}
 
 export const navigation = [
   ["overview", "总览", LayoutDashboard],
@@ -59,6 +93,8 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [data, setData] = useState<DataState>({ dashboard: emptyDashboard, applications: [], targets: [], tasks: [], interviews: [], offers: [], profile: {id:0,fullName:"",email:"",city:"",education:"",school:"",major:"",targetRole:"",summary:"",githubUrl:"",portfolioUrl:"",updatedAt:""}, materials: [], settings: null, migration: null, system: null });
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -78,6 +114,39 @@ export default function App() {
 
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => { document.documentElement.dataset.theme = data.settings?.config.theme || "bright"; }, [data.settings?.config.theme]);
+  useEffect(() => {
+    const enabled = data.settings?.config.checkUpdatesOnStart === true;
+    const currentVersion = data.system?.version;
+    if (!enabled) {
+      setUpdateInfo(null);
+      setUpdateDismissed(false);
+      return;
+    }
+    if (!currentVersion) return;
+
+    const cached = readCachedUpdate();
+    const cacheMatchesCurrentVersion = cached?.info.current === currentVersion;
+    setUpdateInfo(cacheMatchesCurrentVersion && cached.info.available ? cached.info : null);
+    setUpdateDismissed(false);
+    if (hasExplicitUpdateCheck() || (cacheMatchesCurrentVersion && Date.now() - cached.checkedAt < UPDATE_CHECK_INTERVAL_MS)) return;
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const info = await api<UpdateInfo>("/updates/check?component=app");
+          cacheUpdate(info);
+          if (!cancelled) setUpdateInfo(info.available ? info : null);
+        } catch (reason) {
+          if (!cancelled) console.debug("自动更新检查失败，保留已有提示。", reason);
+        }
+      })();
+    }, 3000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [data.settings?.config.checkUpdatesOnStart, data.system?.version]);
   useEffect(() => {
     const onHash = () => setPage(routeFromHash());
     window.addEventListener("hashchange", onHash);
@@ -147,6 +216,14 @@ export default function App() {
           <div className="today"><CalendarCheck2 size={16} /><span>{today}</span></div>
           <button className="primary-button compact-button" onClick={() => { go("applications"); setNewApplicationSignal((value) => value + 1); }}><Plus size={17} />新建投递</button>
         </div>
+        {updateInfo?.available && !updateDismissed && <section className="update-notice" role="status" aria-label="发现新版本">
+          <div className="update-notice-copy"><strong>发现新版本 {updateInfo.latest}</strong><span>当前版本 {updateInfo.current || "未知"}，可查看更新说明。</span></div>
+          <div className="update-notice-actions">
+            <button type="button" className="update-notice-button primary" onClick={() => go("settings?checkUpdate=app")}>进入更新设置</button>
+            {updateInfo.releaseUrl && <a className="update-notice-button" href={updateInfo.releaseUrl} target="_blank" rel="noreferrer">查看更新<ExternalLink size={14}/></a>}
+            <button type="button" className="update-notice-dismiss" aria-label="关闭更新提示" title="关闭" onClick={() => setUpdateDismissed(true)}><X size={16}/></button>
+          </div>
+        </section>}
         <div className="page-container">{content}</div>
         <footer className="app-footer"><span>© Suryxin-xx · ResumeDetective</span><span>本地优先 · 数据保存在 EXE 旁的 data 文件夹</span></footer>
       </main>

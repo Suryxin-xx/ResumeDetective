@@ -33,7 +33,7 @@ import (
 	"github.com/Suryxin-xx/ResumeDetective/internal/webui"
 )
 
-var version = "4.5.0-dev"
+var version = "4.5.1-dev"
 
 func main() {
 	var dataDir string
@@ -178,7 +178,7 @@ func main() {
 		tray.Run(brand.IconICO, cfg.WorkspaceName+"正在本机运行", url, tray.Actions{
 			Open:         func() { _ = openBrowser(url) },
 			Restart:      func() { requestAction("restart") },
-			CheckUpdates: func() { _ = openBrowser(url + "/#settings") },
+			CheckUpdates: func() { _ = openBrowser(url + "/#/settings?checkUpdate=app") },
 			Quit:         func() { requestAction("quit") },
 		})
 	} else {

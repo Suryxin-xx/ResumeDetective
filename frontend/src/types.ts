@@ -133,6 +133,19 @@ export type AppConfig = {
 
 export type SettingsView = { config: AppConfig; apiKeyConfigured: boolean; dataDir: string };
 export type UpdateNetworkConfig = { mode: "auto" | "system" | "env" | "custom" | "off"; proxyUrl: string };
+export type UpdateInfo = {
+  repository: string;
+  current: string;
+  latest: string;
+  name: string;
+  notes: string;
+  releaseUrl: string;
+  available: boolean;
+  canAutoUpdate: boolean;
+  assetName?: string;
+  assetSize?: number;
+  reason?: string;
+};
 export type MigrationStatus = { available: boolean; sourceDir?: string; applications: number; reason: string };
 export type SystemInfo = { version: string; dataDir: string; developer: { name: string; email: string; repository: string } };
 

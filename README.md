@@ -19,6 +19,8 @@
 <p align="center"><img src="screenshots/v4-overview.png" alt="ResumeDetective 总览页面" width="100%"></p>
 
 > [!TIP]
+> **v4.5.1：** 面试复盘改为更紧凑清晰的记录卡片与弹窗编辑；Offer 候选筛选、决策统计和窄窗口布局得到完善；启动更新检查改为非阻塞提示，托盘可直接进入更新设置。本次不修改数据库结构。
+>
 > **v4.5.0：** “已安排时间”现在可区分截止时间与固定时间，并记录计划时间、实际完成时间和备注；首页集中显示近期安排，投递管理支持按时间筛选和排序。数据库以增量方式升级到 schema v10，不覆盖既有投递、简历和配置。
 
 ## 为什么做这个工具
@@ -193,7 +195,7 @@ go run ./cmd/resumedetective --data-dir .\local-artifacts\dev-data --no-browser
 ### Windows 正式构建
 
 ```powershell
-.\scripts\atuo.bat -Version 4.5.0
+.\scripts\atuo.bat -Version 4.5.1
 ```
 
 构建入口依次执行仓库安全扫描、React/TypeScript 构建、Go 测试、`go vet`、Windows GUI EXE 构建、版本资源写入、虚构演示库生成、ZIP 压缩和 SHA-256 生成。

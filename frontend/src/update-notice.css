@@ -1,0 +1,130 @@
+.update-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 18px 30px -2px;
+  padding: 11px 14px 11px 16px;
+  border: 1px solid #b9d7fb;
+  border-radius: 12px;
+  background: linear-gradient(100deg, #edf6ff, #f8fbff);
+  color: var(--ink);
+  box-shadow: 0 8px 22px rgba(49, 111, 179, .08);
+}
+
+.update-notice-copy,
+.update-notice-actions {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.update-notice-copy {
+  gap: 10px;
+}
+
+.update-notice-copy strong {
+  color: var(--ink-strong);
+  font-size: .78rem;
+  white-space: nowrap;
+}
+
+.update-notice-copy span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: .7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.update-notice-actions {
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.update-notice-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid #c4d9f0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .78);
+  color: var(--accent-strong);
+  font-size: .69rem;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color .14s, background .14s, transform .14s;
+}
+
+.update-notice-button:hover {
+  border-color: #8db9ec;
+  background: #fff;
+  transform: translateY(-1px);
+}
+
+.update-notice-button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.update-notice-button.primary:hover {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+}
+
+.update-notice-dismiss {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.update-notice-dismiss:hover {
+  background: rgba(28, 91, 151, .1);
+  color: var(--ink);
+}
+
+.update-error {
+  color: var(--danger);
+  font-size: .7rem;
+}
+
+:root[data-theme="dark"] .update-notice {
+  border-color: #2c5279;
+  background: linear-gradient(100deg, #172d43, #19242f);
+}
+
+:root[data-theme="dark"] .update-notice-button {
+  border-color: #355b80;
+  background: rgba(20, 34, 48, .72);
+}
+
+@media (max-width: 900px) {
+  .update-notice {
+    align-items: flex-start;
+    flex-direction: column;
+    margin: 14px 18px -2px;
+  }
+
+  .update-notice-copy {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .update-notice-copy span {
+    white-space: normal;
+  }
+}

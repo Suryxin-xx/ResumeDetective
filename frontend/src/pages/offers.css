@@ -1,0 +1,224 @@
+/* Offer page overrides are intentionally scoped so the shared shell keeps its
+   existing rhythm on every other page. */
+body.offers-page-active {
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.offers-page {
+  min-width: 0;
+}
+
+.offers-page .offer-summary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.offers-page .offer-summary-grid article {
+  min-width: 0;
+}
+
+.offers-page .offer-summary-grid strong {
+  min-width: 0;
+  font-size: clamp(1rem, 1.8vw, 1.15rem);
+}
+
+.offers-page .offer-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+
+.offers-page .offer-table-wrap:focus-visible {
+  outline: 3px solid rgba(95, 127, 165, .24);
+  outline-offset: -3px;
+}
+
+.offers-page .offer-table {
+  min-width: 820px;
+}
+
+.offers-page .offer-table th:first-child,
+.offers-page .offer-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface-solid);
+  box-shadow: 8px 0 12px -12px rgba(22, 50, 80, .42);
+}
+
+.offers-page .offer-table th:first-child {
+  z-index: 2;
+  background: var(--surface-muted);
+}
+
+.offers-page .offer-table tbody tr:hover td:first-child {
+  background: var(--surface-muted);
+}
+
+.offers-page .offer-table .offer-total span,
+.offers-page .offer-table .offer-total small {
+  display: block;
+}
+
+.offers-page .offer-table .offer-total small {
+  margin-top: 4px;
+  color: var(--faint);
+  font-size: .65rem;
+  font-weight: 500;
+}
+
+.offers-page .offer-row-inactive td {
+  color: var(--muted);
+}
+
+.offers-page .offer-row-inactive td:first-child {
+  background: var(--surface-muted);
+}
+
+.offers-page .offer-row-inactive .offer-total {
+  color: var(--muted);
+}
+
+.offers-page .offer-application-field {
+  min-width: 0;
+}
+
+.offers-page .offer-application-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 9px;
+}
+
+.offers-page .offer-application-tools input[aria-label="搜索岗位"] {
+  min-width: 0;
+}
+
+.offers-page .offer-terminal-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  color: var(--muted);
+  font-size: .72rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.offers-page .offer-terminal-toggle input[type="checkbox"] {
+  width: 15px;
+  min-width: 15px;
+  height: 15px;
+  min-height: 15px;
+  padding: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.offers-page .offer-application-field > select {
+  width: 100%;
+}
+
+/* The shared Modal uses a scrolling card. For this form only, the card is a
+   flex column and the fields are the sole scrolling region; actions stay in
+   view at the bottom of a short desktop window. */
+body.offers-modal-open .modal-layer {
+  place-items: center;
+  overflow: hidden;
+  padding: 16px;
+}
+
+body.offers-modal-open .modal-card.modal-wide {
+  display: flex;
+  flex-direction: column;
+  width: min(900px, calc(100vw - 32px));
+  height: min(760px, calc(100dvh - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: hidden;
+}
+
+body.offers-modal-open .modal-card .modal-heading {
+  flex: 0 0 auto;
+}
+
+body.offers-modal-open .offers-modal-form {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+body.offers-modal-open .offers-modal-form .modal-form-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+body.offers-modal-open .offers-modal-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  flex: 0 0 auto;
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  box-shadow: 0 -10px 22px -20px rgba(20, 48, 76, .7);
+  backdrop-filter: blur(13px);
+}
+
+@media (max-width: 900px) {
+  .offers-page .offer-summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .offers-page .offer-application-tools {
+    grid-template-columns: 1fr;
+  }
+
+  .offers-page .offer-terminal-toggle {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 720px) {
+  .offers-page .offer-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 820px) {
+  .offers-page .offer-table {
+    min-width: 820px;
+  }
+
+  body.offers-modal-open .modal-layer {
+    place-items: start center;
+    padding: 8px;
+  }
+
+  body.offers-modal-open .modal-card.modal-wide {
+    width: min(900px, calc(100vw - 16px));
+    height: calc(100dvh - 16px);
+    max-height: calc(100dvh - 16px);
+    border-radius: 15px;
+  }
+
+  body.offers-modal-open .modal-form-grid {
+    grid-template-columns: 1fr;
+    padding: 17px 16px;
+  }
+
+  body.offers-modal-open .offers-modal-actions {
+    padding: 12px 16px;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  body.offers-modal-open .offers-modal-actions {
+    background: var(--surface-solid);
+    backdrop-filter: none;
+  }
+}
