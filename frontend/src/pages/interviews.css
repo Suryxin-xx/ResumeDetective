@@ -216,6 +216,63 @@
   font-size: .72rem;
 }
 
+.interview-next-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 11px;
+  padding: 10px 11px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface-solid));
+}
+
+.interview-next-step > span {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--accent) 13%, var(--surface-solid));
+  color: var(--accent-strong);
+}
+
+.interview-next-step > div {
+  min-width: 0;
+}
+
+.interview-next-step strong,
+.interview-next-step small {
+  display: block;
+}
+
+.interview-next-step strong {
+  color: var(--ink-strong);
+  font-size: .74rem;
+}
+
+.interview-next-step small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: .68rem;
+  line-height: 1.45;
+}
+
+.interview-next-step .secondary-button {
+  white-space: nowrap;
+}
+
+.interview-next-step.is-recorded {
+  border-color: color-mix(in srgb, #22a06b 25%, var(--line));
+  background: color-mix(in srgb, #22a06b 6%, var(--surface-solid));
+}
+
+.interview-next-step.is-recorded > span {
+  background: color-mix(in srgb, #22a06b 12%, var(--surface-solid));
+  color: #16815a;
+}
+
 .interview-review {
   margin-top: 11px;
   border-top: 1px solid var(--line-soft);
@@ -398,5 +455,14 @@
 
   .interviews-modal-actions button {
     flex: 1;
+  }
+
+  .interview-next-step {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .interview-next-step .secondary-button {
+    grid-column: 1 / -1;
+    justify-content: center;
   }
 }

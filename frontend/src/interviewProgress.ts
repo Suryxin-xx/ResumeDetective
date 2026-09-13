@@ -8,6 +8,13 @@ export function interviewStage(round: string) {
   return "业务面试";
 }
 
+export function nextInterviewRound(round: string) {
+  if (round === "AI 面试") return "一面";
+  if (round === "一面") return "二面";
+  if (round === "二面") return "三面";
+  return "";
+}
+
 export function interviewStageState(result: string) {
   if (result === "待面试") return "已安排";
   if (result === "待确认") return "已完成，等待结果";
