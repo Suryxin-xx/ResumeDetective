@@ -22,11 +22,14 @@ func TestTaskAndInterviewWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := st.UpdateTask(ctx, taskID, UpdateTaskInput{Title: "复习 HTTP/3", DueDate: "2026-08-05", Priority: 4, Notes: "整理 QUIC 笔记"}); err != nil {
+		t.Fatal(err)
+	}
 	if err := st.SetTaskState(ctx, taskID, "done"); err != nil {
 		t.Fatal(err)
 	}
 	tasks, err := st.ListTasks(ctx)
-	if err != nil || len(tasks) != 1 || tasks[0].State != "done" {
+	if err != nil || len(tasks) != 1 || tasks[0].State != "done" || tasks[0].Title != "复习 HTTP/3" || tasks[0].DueDate != "2026-08-05" || tasks[0].Priority != 4 || tasks[0].Notes != "整理 QUIC 笔记" {
 		t.Fatalf("tasks=%#v err=%v", tasks, err)
 	}
 	interviewID, err := st.CreateInterview(ctx, CreateInterviewInput{ApplicationID: appID, Round: "一面", InterviewTime: "2026-09-08T14:00", InterviewMode: "视频面试", MeetingLink: "https://meeting.example.com/room", ScheduleNotes: "提前 10 分钟入会", Result: "待面试", Questions: "网络分层", WeakPoints: "HTTP/3", FollowUp: "复习 QUIC"})

@@ -46,12 +46,12 @@ func TestUpdateStatusAppendsHistoryAndDeleteCleansRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	id, err := st.CreateApplication(context.Background(), CreateApplicationInput{CompanyName: "状态公司", PositionName: "产品"})
+	id, err := st.CreateApplication(context.Background(), CreateApplicationInput{CompanyName: "状态公司", PositionName: "产品", ResumePath: `data/resumes/original.pdf`})
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = st.UpdateApplication(context.Background(), id, UpdateApplicationInput{
-		CurrentStatus: "测评", StageState: "已完成，等待结果", NextAction: "等待通知", Source: "内推", Category: "产品", Priority: 2,
+		CompanyName: "更正后的公司", PositionName: "高级产品经理", CurrentStatus: "测评", StageState: "已完成，等待结果", NextAction: "等待通知", Source: "内推", Category: "产品", Priority: 2,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -60,7 +60,7 @@ func TestUpdateStatusAppendsHistoryAndDeleteCleansRecord(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 1 || items[0].CurrentStatus != "测评" || len(items[0].StatusHistory) != 2 {
+	if len(items) != 1 || items[0].CompanyName != "更正后的公司" || items[0].PositionName != "高级产品经理" || items[0].ResumePath != `data/resumes/original.pdf` || items[0].CurrentStatus != "测评" || len(items[0].StatusHistory) != 2 {
 		t.Fatalf("unexpected updated application: %#v", items)
 	}
 	if err := st.DeleteApplication(context.Background(), id); err != nil {

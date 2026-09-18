@@ -43,7 +43,7 @@ type Server struct {
 	pickDirectory func(context.Context) (string, error)
 }
 
-var Version = "4.5.2-dev"
+var Version = "4.5.3-dev"
 
 type Options struct {
 	Settings      *settings.Manager
@@ -103,6 +103,7 @@ func NewWithOptions(st *store.Store, web fs.FS, paths config.Paths, v3Dir string
 	mux.HandleFunc("POST /api/targets/{id}/convert", s.convertTarget)
 	mux.HandleFunc("GET /api/tasks", s.listTasks)
 	mux.HandleFunc("POST /api/tasks", s.createTask)
+	mux.HandleFunc("PATCH /api/tasks/{id}", s.updateTask)
 	mux.HandleFunc("PATCH /api/tasks/{id}/state", s.setTaskState)
 	mux.HandleFunc("DELETE /api/tasks/{id}", s.deleteTask)
 	mux.HandleFunc("GET /api/interviews", s.listInterviews)
@@ -890,6 +891,22 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]int64{"id": id})
+}
+func (s *Server) updateTask(w http.ResponseWriter, r *http.Request) {
+	id, err := store.ParseID(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var in store.UpdateTaskInput
+	if err := decodeJSON(w, r, &in); err != nil {
+		return
+	}
+	if err := s.store.UpdateTask(r.Context(), id, in); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 func (s *Server) setTaskState(w http.ResponseWriter, r *http.Request) {
 	id, err := store.ParseID(r.PathValue("id"))

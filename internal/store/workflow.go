@@ -49,6 +49,13 @@ type CreateTaskInput struct {
 	Notes    string `json:"notes"`
 }
 
+type UpdateTaskInput struct {
+	Title    string `json:"title"`
+	DueDate  string `json:"dueDate"`
+	Priority int    `json:"priority"`
+	Notes    string `json:"notes"`
+}
+
 type CreateInterviewInput struct {
 	ApplicationID int64  `json:"applicationId"`
 	Round         string `json:"round"`
@@ -105,6 +112,29 @@ func (s *Store) CreateTask(ctx context.Context, in CreateTaskInput) (int64, erro
 		return 0, err
 	}
 	return result.LastInsertId()
+}
+
+func (s *Store) UpdateTask(ctx context.Context, id int64, in UpdateTaskInput) error {
+	if id < 1 {
+		return errors.New("无效的任务编号")
+	}
+	in.Title = strings.TrimSpace(in.Title)
+	if in.Title == "" {
+		return errors.New("任务名称不能为空")
+	}
+	if in.Priority < 0 || in.Priority > 5 {
+		return errors.New("优先级必须在 0 到 5 之间")
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE job_tasks SET title=?,due_date=?,priority=?,notes=? WHERE id=? AND source='manual'`,
+		in.Title, strings.TrimSpace(in.DueDate), in.Priority, strings.TrimSpace(in.Notes), id)
+	if err != nil {
+		return err
+	}
+	changed, _ := result.RowsAffected()
+	if changed == 0 {
+		return errors.New("岗位联动任务需在投递管理中修改，或任务不存在")
+	}
+	return nil
 }
 
 func (s *Store) SetTaskState(ctx context.Context, id int64, state string) error {

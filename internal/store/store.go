@@ -89,6 +89,8 @@ type CreateApplicationInput struct {
 }
 
 type UpdateApplicationInput struct {
+	CompanyName         string `json:"companyName"`
+	PositionName        string `json:"positionName"`
 	CurrentStatus       string `json:"currentStatus"`
 	StageState          string `json:"stageState"`
 	NextAction          string `json:"nextAction"`
@@ -325,16 +327,26 @@ func (s *Store) UpdateApplication(ctx context.Context, id int64, in UpdateApplic
 	}
 	defer tx.Rollback()
 	var resumeID int64
-	var oldStatus, oldStageState, oldStatusUpdateTime, oldTimeType, oldScheduledAt, oldCompletedAt, oldTimeNote, historyRaw string
-	if err := tx.QueryRowContext(ctx, `SELECT resume_id,current_status,stage_state,COALESCE(status_update_time,''),
+	var oldCompanyName, oldPositionName, oldStatus, oldStageState, oldStatusUpdateTime, oldTimeType, oldScheduledAt, oldCompletedAt, oldTimeNote, historyRaw string
+	if err := tx.QueryRowContext(ctx, `SELECT a.resume_id,r.company_name,r.position_name,a.current_status,a.stage_state,COALESCE(a.status_update_time,''),
 		COALESCE(stage_time_type,''),COALESCE(stage_scheduled_at,''),COALESCE(stage_completed_at,''),COALESCE(stage_time_note,''),COALESCE(status_history,'')
-		FROM applications WHERE id=?`, id).Scan(&resumeID, &oldStatus, &oldStageState, &oldStatusUpdateTime, &oldTimeType, &oldScheduledAt, &oldCompletedAt, &oldTimeNote, &historyRaw); err != nil {
+		FROM applications a JOIN resumes r ON r.id=a.resume_id WHERE a.id=?`, id).Scan(&resumeID, &oldCompanyName, &oldPositionName, &oldStatus, &oldStageState, &oldStatusUpdateTime, &oldTimeType, &oldScheduledAt, &oldCompletedAt, &oldTimeNote, &historyRaw); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return errors.New("投递记录不存在")
 		}
 		return err
 	}
 	now := time.Now().Format(time.RFC3339)
+	in.CompanyName = strings.TrimSpace(in.CompanyName)
+	in.PositionName = strings.TrimSpace(in.PositionName)
+	// Keep PATCH compatible with clients built before editable identity fields
+	// were introduced. The current UI always submits both required values.
+	if in.CompanyName == "" {
+		in.CompanyName = oldCompanyName
+	}
+	if in.PositionName == "" {
+		in.PositionName = oldPositionName
+	}
 	in.StageTimeType = strings.TrimSpace(in.StageTimeType)
 	in.StageScheduledAt = strings.TrimSpace(in.StageScheduledAt)
 	in.StageCompletedAt = strings.TrimSpace(in.StageCompletedAt)
@@ -374,8 +386,8 @@ func (s *Store) UpdateApplication(ctx context.Context, id int64, in UpdateApplic
 	if err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE resumes SET city=?,application_source=?,job_link=?,job_category=?,tags=?,jd_text=? WHERE id=?`,
-		strings.TrimSpace(in.City), strings.TrimSpace(in.Source), strings.TrimSpace(in.JobLink), strings.TrimSpace(in.Category), strings.TrimSpace(in.Tags), in.JDText, resumeID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE resumes SET company_name=?,position_name=?,city=?,application_source=?,job_link=?,job_category=?,tags=?,jd_text=? WHERE id=?`,
+		in.CompanyName, in.PositionName, strings.TrimSpace(in.City), strings.TrimSpace(in.Source), strings.TrimSpace(in.JobLink), strings.TrimSpace(in.Category), strings.TrimSpace(in.Tags), in.JDText, resumeID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE applications SET current_status=?,stage_state=?,next_action=?,priority=?,applied_at=?,application_deadline=?,next_action_due_at=?,last_follow_up_at=?,stage_time_type=?,stage_scheduled_at=?,stage_completed_at=?,stage_time_note=?,status_update_time=?,status_history=? WHERE id=?`,

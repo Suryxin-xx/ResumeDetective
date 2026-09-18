@@ -510,6 +510,8 @@ body.drawer-open{overflow:hidden}
 :root[data-theme="dark"] .quick-stage-trigger:hover,:root[data-theme="dark"] .stage-state-trigger:hover{background:#172a3b}
 @media(max-width:900px){.drawer-card{width:calc(100vw - 64px)}.application-drawer-form .editor-grid{grid-template-columns:1fr}.flow-pulse-grid{grid-template-columns:1fr}.flow-pulse-grid button{min-height:104px}}
 
+.task-list article{grid-template-columns:32px minmax(0,1fr) auto auto}.task-actions{display:flex;align-items:center;gap:4px}
+
 /* Stage schedule */
 .application-table{min-width:1120px}.application-table th:nth-child(2){width:23%}.application-table th:nth-child(3){width:10%}.application-table th:nth-child(4){width:12%}.application-table th:nth-child(5){width:15%}.application-table th:nth-child(6){width:9%}.application-table th:nth-child(7){width:14%}.application-table th:nth-child(8){width:8%}
 .stage-time-cell{display:flex;align-items:flex-start;gap:7px;width:calc(100% + 8px);margin-left:-8px;padding:7px 8px;border:0;border-radius:9px;background:transparent;color:var(--muted);text-align:left;cursor:pointer}.stage-time-cell:hover{background:var(--accent-soft)}.stage-time-cell svg{flex:0 0 auto;margin-top:1px}.stage-time-cell span,.stage-time-cell strong,.stage-time-cell small{display:block;min-width:0}.stage-time-cell strong{overflow:hidden;color:inherit;font-size:.73rem;font-weight:700;text-overflow:ellipsis;white-space:nowrap}.stage-time-cell small{overflow:hidden;margin-top:3px;color:var(--faint);font-size:.64rem;text-overflow:ellipsis;white-space:nowrap}.stage-time-cell.tone-overdue{color:#b4473d}.stage-time-cell.tone-urgent{color:#c26b2c}.stage-time-cell.tone-soon{color:#9a751b}.stage-time-cell.tone-future{color:var(--accent-strong)}.stage-time-cell.tone-done{color:#56806a}

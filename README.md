@@ -19,7 +19,7 @@
 <p align="center"><img src="screenshots/v4-overview.png" alt="ResumeDetective 总览页面" width="100%"></p>
 
 > [!TIP]
-> **v4.5.2：** 一面或二面通过后可直接“安排下一轮”，自动预填同一岗位、下一轮和待面试；每轮仍保存为独立记录，不覆盖已有复盘。自动更新启动提示已通过旧版本隔离实例验证。本次不修改数据库结构。
+> **v4.5.3：** 已有投递现在可以修正公司和岗位名称，并同步反映到面试、Offer、简历汇总与 Excel 镜像；手动行动任务支持修改名称、日期、优先级和备注。本次不修改数据库结构，也不会自动改名或解除已绑定简历。
 >
 > **v4.5.1：** 面试复盘改为更紧凑清晰的记录卡片与弹窗编辑；Offer 候选筛选、决策统计和窄窗口布局得到完善；启动更新检查改为非阻塞提示，托盘可直接进入更新设置。本次不修改数据库结构。
 >
@@ -197,7 +197,7 @@ go run ./cmd/resumedetective --data-dir .\local-artifacts\dev-data --no-browser
 ### Windows 正式构建
 
 ```powershell
-.\scripts\atuo.bat -Version 4.5.2
+.\scripts\atuo.bat -Version 4.5.3
 ```
 
 构建入口依次执行仓库安全扫描、React/TypeScript 构建、Go 测试、`go vet`、Windows GUI EXE 构建、版本资源写入、虚构演示库生成、ZIP 压缩和 SHA-256 生成。

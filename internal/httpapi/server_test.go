@@ -51,6 +51,60 @@ func TestLocalHostAndApplicationAPI(t *testing.T) {
 	}
 }
 
+func TestApplicationIdentityCanBeEdited(t *testing.T) {
+	h := testHandler(t)
+	create := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/applications", bytes.NewBufferString(`{"companyName":"原公司","positionName":"原岗位","resumePath":"data/resumes/original.pdf"}`))
+	create.Host = "127.0.0.1:8765"
+	created := httptest.NewRecorder()
+	h.ServeHTTP(created, create)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create application: %d %s", created.Code, created.Body.String())
+	}
+
+	update := httptest.NewRequest(http.MethodPatch, "http://127.0.0.1/api/applications/1", bytes.NewBufferString(`{"companyName":"新公司","positionName":"新岗位","currentStatus":"已投递","stageState":"已完成，等待结果","priority":0}`))
+	update.Host = "127.0.0.1:8765"
+	updated := httptest.NewRecorder()
+	h.ServeHTTP(updated, update)
+	if updated.Code != http.StatusOK {
+		t.Fatalf("update application: %d %s", updated.Code, updated.Body.String())
+	}
+
+	list := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/api/applications", nil)
+	list.Host = "127.0.0.1:8765"
+	listed := httptest.NewRecorder()
+	h.ServeHTTP(listed, list)
+	if listed.Code != http.StatusOK || !bytes.Contains(listed.Body.Bytes(), []byte(`"companyName":"新公司"`)) || !bytes.Contains(listed.Body.Bytes(), []byte(`"positionName":"新岗位"`)) || !bytes.Contains(listed.Body.Bytes(), []byte(`"resumePath":"data/resumes/original.pdf"`)) {
+		t.Fatalf("list updated application: %d %s", listed.Code, listed.Body.String())
+	}
+}
+
+func TestManualTaskCanBeEdited(t *testing.T) {
+	h := testHandler(t)
+	create := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/tasks", bytes.NewBufferString(`{"title":"原任务","dueDate":"2026-09-20","priority":1,"notes":"原备注"}`))
+	create.Host = "127.0.0.1:8765"
+	created := httptest.NewRecorder()
+	h.ServeHTTP(created, create)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create task: %d %s", created.Code, created.Body.String())
+	}
+
+	update := httptest.NewRequest(http.MethodPatch, "http://127.0.0.1/api/tasks/1", bytes.NewBufferString(`{"title":"新任务","dueDate":"2026-09-22","priority":4,"notes":"新备注"}`))
+	update.Host = "127.0.0.1:8765"
+	updated := httptest.NewRecorder()
+	h.ServeHTTP(updated, update)
+	if updated.Code != http.StatusOK {
+		t.Fatalf("update task: %d %s", updated.Code, updated.Body.String())
+	}
+
+	list := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/api/tasks", nil)
+	list.Host = "127.0.0.1:8765"
+	listed := httptest.NewRecorder()
+	h.ServeHTTP(listed, list)
+	if listed.Code != http.StatusOK || !bytes.Contains(listed.Body.Bytes(), []byte(`"title":"新任务"`)) || !bytes.Contains(listed.Body.Bytes(), []byte(`"dueDate":"2026-09-22"`)) || !bytes.Contains(listed.Body.Bytes(), []byte(`"priority":4`)) || !bytes.Contains(listed.Body.Bytes(), []byte(`"notes":"新备注"`)) {
+		t.Fatalf("list updated task: %d %s", listed.Code, listed.Body.String())
+	}
+}
+
 func TestInterviewCanBeEdited(t *testing.T) {
 	h := testHandler(t)
 	createApplication := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/applications", bytes.NewBufferString(`{"companyName":"示例","positionName":"后端"}`))
