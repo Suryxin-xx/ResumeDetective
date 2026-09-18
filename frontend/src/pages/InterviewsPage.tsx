@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { ArrowRight, CalendarClock, CheckCircle2, ExternalLink, MessageSquarePlus, Pencil, Search, Trash2, Video } from "lucide-react";
 import { api, formatDateTime, jsonBody } from "../api";
 import { ConfirmButton, EmptyState, Field, Modal, PageHeader, Panel, StatusBadge } from "../components";
-import { interviewResultLabel, interviewStage, nextInterviewRound } from "../interviewProgress";
+import { applicationInterviewProgress, interviewResultLabel, interviewStage, nextInterviewRound, preferredInterview } from "../interviewProgress";
 import type { PageProps } from "../App";
 import type { Application, Interview } from "../types";
 import "./interviews.css";
@@ -13,7 +13,7 @@ const terminalStatuses = new Set(["终止", "已终止", "未通过", "主动放
 const interviewStatuses = new Set(["业务面试", "HR 面"]);
 const activeResults = new Set(["待面试", "待确认"]);
 const results = [
-  { value: "待面试", label: "待面试（已安排，尚未进行）" },
+  { value: "待面试", label: "待面试（时间可稍后补充）" },
   { value: "待确认", label: "结果待通知（尚未收到官方结果）" },
   { value: "通过", label: "通过" },
   { value: "未通过", label: "未通过" },
@@ -29,9 +29,8 @@ function routeSelection() {
 export default function InterviewsPage({ data, refresh }: PageProps) {
   const [selection] = useState(routeSelection);
   const [presetApplicationId, setPresetApplicationId] = useState(selection.applicationId);
-  const [presetRound, setPresetRound] = useState(selection.round);
+  const [presetRound, setPresetRound] = useState(() => data.applications.find(item => item.id === selection.applicationId)?.currentStatus === "HR 面" ? "HR 面" : selection.round);
   const [editor, setEditor] = useState<Interview | "new" | null>(() => data.interviews.find((item) => item.id === selection.interviewId) || (selection.applicationId ? "new" : null));
-  const [showHistory, setShowHistory] = useState(false);
   const [query, setQuery] = useState("");
   const [resultFilter, setResultFilter] = useState(selection.result);
   const [saving, setSaving] = useState(false);
@@ -47,14 +46,36 @@ export default function InterviewsPage({ data, refresh }: PageProps) {
 
   const active = useMemo(() => sortActive(filteredRecords.filter((item) => activeResults.has(item.result))), [filteredRecords]);
   const history = useMemo(() => sortHistory(filteredRecords.filter((item) => !activeResults.has(item.result))), [filteredRecords]);
-  const recordedApplicationIds = useMemo(() => new Set(data.interviews.map((item) => item.applicationId)), [data.interviews]);
+  const recordsByApplication = useMemo(() => {
+    const map = new Map<number, Interview[]>();
+    for (const record of data.interviews) map.set(record.applicationId, [...(map.get(record.applicationId) || []), record]);
+    return map;
+  }, [data.interviews]);
   const unscheduledApplications = useMemo(() => {
     if (resultFilter !== "全部结果" && resultFilter !== "待面试") return [];
     return data.applications.filter((item) => {
       const searchable = `${item.companyName} ${item.positionName} ${item.currentStatus}`.toLowerCase();
-      return interviewStatuses.has(item.currentStatus) && !recordedApplicationIds.has(item.id) && (!normalizedQuery || searchable.includes(normalizedQuery));
+      const progress = applicationInterviewProgress(item, recordsByApplication.get(item.id) || []);
+      return interviewStatuses.has(item.currentStatus) && !progress.interview && (!normalizedQuery || searchable.includes(normalizedQuery));
     }).sort((a, b) => (parseTimestamp(b.statusUpdateTime) ?? 0) - (parseTimestamp(a.statusUpdateTime) ?? 0) || b.priority - a.priority);
-  }, [data.applications, normalizedQuery, recordedApplicationIds, resultFilter]);
+  }, [data.applications, normalizedQuery, recordsByApplication, resultFilter]);
+  const groups = useMemo(() => {
+    const ids = new Set(filteredRecords.map(record => record.applicationId));
+    return [...ids].map(id => {
+      const all = recordsByApplication.get(id) || [];
+      const application = data.applications.find(item => item.id === id);
+      const derived = application ? applicationInterviewProgress(application, all) : null;
+      const progress = derived && !derived.interview ? { ...derived, kind: "history" as const } : derived;
+      const current = progress?.interview || preferredInterview(all);
+      return { id, records: sortHistory(all), current, progress, matches: filteredRecords.filter(record => record.applicationId === id) };
+    }).sort((a, b) => {
+      const rank = { scheduled: 0, unscheduled: 1, waiting: 2, "next-round": 3, history: 4 };
+      const order = rank[a.progress?.kind || "history"] - rank[b.progress?.kind || "history"];
+      if (order) return order;
+      if (a.progress?.kind === "scheduled") return (parseTimestamp(a.current?.interviewTime) ?? Number.MAX_SAFE_INTEGER) - (parseTimestamp(b.current?.interviewTime) ?? Number.MAX_SAFE_INTEGER);
+      return (parseTimestamp(b.current?.interviewTime || b.current?.createdAt) ?? 0) - (parseTimestamp(a.current?.interviewTime || a.current?.createdAt) ?? 0);
+    });
+  }, [filteredRecords, recordsByApplication, data.applications]);
   const activeApplications = data.applications.filter((item) => !terminalStatuses.has(item.currentStatus));
   const historicalApplications = data.applications.filter((item) => terminalStatuses.has(item.currentStatus));
 
@@ -69,9 +90,9 @@ export default function InterviewsPage({ data, refresh }: PageProps) {
     setPresetRound("一面");
   }
 
-  function openNew(applicationId = 0, round = "一面") {
+  function openNew(applicationId = 0, round = "") {
     setPresetApplicationId(applicationId);
-    setPresetRound(round);
+    setPresetRound(round || (data.applications.find(item => item.id === applicationId)?.currentStatus === "HR 面" ? "HR 面" : "一面"));
     setEditor("new");
   }
 
@@ -120,7 +141,7 @@ export default function InterviewsPage({ data, refresh }: PageProps) {
 
   return (
     <div className="interviews-page">
-      <PageHeader title="面试安排与复盘" description="先保存时间、形式和会议链接，结束后再补充问题、结果与后续行动。" action={<button className="primary-button" onClick={() => openNew()}><MessageSquarePlus size={17} />记录面试</button>} />
+      <PageHeader title="面试管理" description="按岗位整理所有轮次；先记录安排，面试结束后再补充复盘，不会覆盖上一轮。" action={<button className="primary-button" onClick={() => openNew()}><MessageSquarePlus size={17} />记录面试</button>} />
 
       <Panel className="interviews-filter-panel">
         <div className="interviews-filter-row">
@@ -130,17 +151,26 @@ export default function InterviewsPage({ data, refresh }: PageProps) {
         </div>
       </Panel>
 
-      {unscheduledApplications.length > 0 && <Panel className="interviews-awaiting-panel" title="待补充面试安排" description="这些投递已经进入业务面试或 HR 面，但还没有面试记录；补充时间后会自动进入近期安排。">
+      {unscheduledApplications.length > 0 && <Panel className="interviews-awaiting-panel" title="待补充面试安排" description="这些岗位的当前阶段尚无面试记录；之前的业务面试不会代替新的 HR 面安排。时间未知也可以先保存。">
         <div className="interview-awaiting-list">{unscheduledApplications.map((item) => <UnscheduledInterviewCard key={item.id} item={item} onSchedule={() => openNew(item.id)} />)}</div>
       </Panel>}
 
-      <Panel title="近期安排" description="只显示待面试和结果待通知；同一状态内按面试时间排列。">
-        {active.length ? <div className="interviews-list">{active.map((item) => <InterviewCard key={item.id} item={item} refresh={refresh} onEdit={() => setEditor(item)} {...nextRoundProps(item)} />)}</div> : <EmptyState title="还没有符合条件的近期面试" description="收到面试通知后，先保存安排；面试结束后再补充问题和薄弱点。" />}
-      </Panel>
-
-      <Panel title="已完成复盘" description="通过和未通过的记录会自动归档到这里，避免干扰近期安排。" action={<button className="text-button interviews-history-toggle" disabled={!history.length} onClick={() => setShowHistory((value) => !value)}>{history.length ? (showHistory ? "收起" : `展开 ${history.length} 条`) : "暂无记录"}</button>}>
-        {showHistory && (history.length ? <div className="interviews-list interviews-history-list">{history.map((item) => <InterviewCard key={item.id} item={item} refresh={refresh} onEdit={() => setEditor(item)} history {...nextRoundProps(item)} />)}</div> : <EmptyState title="没有符合条件的历史复盘" description="调整搜索关键词或结果筛选后再试。" />)}
-      </Panel>
+      {(["scheduled", "unscheduled", "waiting", "next-round", "history"] as const).map(kind => {
+        const items = groups.filter(group => (group.progress?.kind || "history") === kind);
+        if (!items.length) return null;
+        const title = { scheduled: "已安排面试", unscheduled: "时间待补充", waiting: "等待面试结果", "next-round": "本轮通过 · 等待后续通知", history: "历史面试" }[kind];
+        return <Panel key={kind} title={`${title} · ${items.length} 个岗位`} description={kind === "next-round" ? "通过不代表下一轮已经确认；收到邀请后再新建对应轮次。" : "当前轮次优先展示，往轮复盘保留在同一岗位下。"}>
+          <div className="interviews-list">{items.map(group => {
+            const visible = resultFilter === "全部结果" && !normalizedQuery ? [group.current].filter((item): item is Interview => Boolean(item)) : group.matches;
+            const past = group.records.filter(record => !visible.some(item => item.id === record.id));
+            return <section className="interview-job-group" key={group.id}>
+              {visible.map(item => <InterviewCard key={item.id} item={item} refresh={refresh} onEdit={() => setEditor(item)} history={kind === "history"} {...(item.id === group.current?.id && kind === "next-round" ? nextRoundProps(item) : {})} />)}
+              {past.length > 0 && <details className="interview-round-history"><summary>查看该岗位其他 {past.length} 轮记录</summary><div className="interviews-list">{past.map(item => <InterviewCard key={item.id} item={item} refresh={refresh} onEdit={() => setEditor(item)} history />)}</div></details>}
+            </section>;
+          })}</div>
+        </Panel>;
+      })}
+      {!groups.length && !unscheduledApplications.length && <EmptyState title="没有符合条件的面试" description="调整搜索或筛选条件，或记录一次新的面试安排。" />}
 
       {editor !== null && <Modal title={editing ? "编辑面试安排与复盘" : presetApplicationId ? `安排${presetRound}` : "新增面试安排"} subtitle={editing ? "安排信息会同步显示在首页重点面试区域。" : presetApplicationId ? `将为同一岗位新建一条${presetRound}记录，不会覆盖上一轮复盘。` : "收到邮件后先保存时间和会议链接，面试结束再回来补充复盘。"} onClose={closeEditor} wide>
         <form key={editing?.id ?? `new-${presetApplicationId}-${presetRound}`} className="interviews-modal-form" onSubmit={save}>
@@ -153,10 +183,12 @@ export default function InterviewsPage({ data, refresh }: PageProps) {
             <Field label="安排备注" hint="例如：提前 10 分钟入会、准备身份证、面试官部门。" span><textarea name="scheduleNotes" rows={3} defaultValue={editing?.scheduleNotes ?? ""} /></Field>
             <Field label="结果" hint="面试完成后，再从“待面试”改为结果待通知或最终结果。"><select name="result" defaultValue={editing?.result || "待面试"}>{results.map((result) => <option key={result.value} value={result.value}>{result.label}</option>)}</select></Field>
             <label className="interview-sync-option field-span"><input type="checkbox" name="syncApplicationStage" defaultChecked /><span><strong>同步到投递进度</strong><small>AI 面试同步为“AI 面试”；一面、二面、三面同步为“业务面试”；HR 面同步为“HR 面”。Offer 或已终止岗位不会被覆盖。</small></span></label>
+            <details className="interview-review-editor field-span" open={editing && editing.result !== "待面试" ? true : undefined}><summary>面试复盘（面试结束后再填写）</summary><div className="modal-form-grid">
             <Field label="整体总结" span><textarea name="summary" rows={3} defaultValue={editing?.summary ?? ""} /></Field>
             <Field label="主要问题" span><textarea name="questions" rows={5} defaultValue={editing?.questions ?? ""} /></Field>
             <Field label="薄弱点"><textarea name="weakPoints" rows={4} defaultValue={editing?.weakPoints ?? ""} /></Field>
             <Field label="后续行动"><textarea name="followUp" rows={4} defaultValue={editing?.followUp ?? ""} /></Field>
+            </div></details>
           </div>
           <div className="modal-actions interviews-modal-actions"><button type="button" className="secondary-button" disabled={saving} onClick={closeEditor}>取消</button><button className="primary-button" disabled={saving}>{saving ? "保存中…" : editing ? "保存修改" : "保存安排"}</button></div>
         </form>
@@ -195,7 +227,7 @@ function InterviewCard({ item, refresh, onEdit, history = false, nextRound = "",
         {item.meetingLink ? <a href={item.meetingLink} target="_blank" rel="noreferrer"><ExternalLink size={14} />打开会议入口</a> : <span className="interview-record-no-link">暂未添加会议入口</span>}
       </div>
 
-      {item.summary ? <p className="interview-record-summary" title={item.summary}>{item.summary}</p> : <p className="interview-record-summary interview-record-summary-empty">尚未补充整体总结</p>}
+      {item.summary && <p className="interview-record-summary" title={item.summary}>{item.summary}</p>}
 
       {hasReview ? (
         <details className="interview-review">
@@ -207,12 +239,12 @@ function InterviewCard({ item, refresh, onEdit, history = false, nextRound = "",
             {item.followUp && <ReviewSection title="后续行动" value={item.followUp} />}
           </div>
         </details>
-      ) : <p className="interview-review-empty">尚未补充复盘</p>}
+      ) : item.result !== "待面试" ? <p className="interview-review-empty">尚未补充复盘，可点击编辑补充</p> : null}
 
       {nextRound && <div className={`interview-next-step ${nextRoundRecorded ? "is-recorded" : ""}`}>
         <span>{nextRoundRecorded ? <CheckCircle2 size={17} /> : <ArrowRight size={17} />}</span>
-        <div><strong>{nextRoundRecorded ? `${nextRound}已经记录` : `本轮通过，下一步可安排${nextRound}`}</strong><small>{nextRoundRecorded ? "上一轮复盘已保留，可在近期安排中继续跟进。" : `收到通知后新建独立的${nextRound}记录，不会覆盖${item.round}。`}</small></div>
-        {onNextRound && <button type="button" className="secondary-button" onClick={onNextRound}>安排{nextRound}<ArrowRight size={14} /></button>}
+        <div><strong>{nextRoundRecorded ? `${nextRound}已经记录` : "本轮通过，等待后续通知"}</strong><small>{nextRoundRecorded ? "上一轮复盘已保留，可在对应岗位下继续跟进。" : `仅在收到下一轮邀请后添加${nextRound}，不会覆盖${item.round}。`}</small></div>
+        {onNextRound && <button type="button" className="secondary-button" onClick={onNextRound}>收到邀请，添加{nextRound}<ArrowRight size={14} /></button>}
       </div>}
 
       <div className="interview-record-actions"><button type="button" className="text-button" onClick={onEdit}><Pencil size={14} />编辑</button><ConfirmButton className="text-button danger-text" confirmText="删除这条面试记录？" onConfirm={async () => { await api(`/interviews/${item.id}`, { method: "DELETE" }); await refresh(); }}><Trash2 size={14} />删除</ConfirmButton></div>

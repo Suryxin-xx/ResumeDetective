@@ -1,0 +1,46 @@
+/* v4.6: compact retrieval surfaces without hiding linked applications. */
+.interview-focus-grid.scheduled-interview-grid { grid-template-columns: repeat(auto-fit,minmax(min(300px,100%),1fr)); }
+@media(min-width:1101px) {
+  .scheduled-interview-grid > article:only-child { grid-template-columns: minmax(0,1fr) minmax(0,1fr); align-items: start; }
+  .scheduled-interview-grid > article:only-child footer { grid-column: 1 / -1; }
+  .scheduled-interview-grid > article:only-child .interview-focus-schedule { margin: 0; }
+}
+.interview-awaiting-notice { margin: 0 14px 14px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.interview-awaiting-notice:first-child { margin-top: 14px; }
+.interview-awaiting-notice > header { padding: 12px 15px; background: var(--surface-muted); }
+.interview-awaiting-notice h3 { margin: 0; color: var(--ink-strong); font-size: .85rem; }
+.interview-awaiting-notice h3 span { margin-left: 6px; color: var(--accent-strong); }
+.interview-awaiting-notice p { margin: 5px 0 0; color: var(--muted); font-size: .74rem; }
+.interview-awaiting-rows { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); max-height: 260px; overflow-y: auto; }
+.interview-awaiting-row { display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: center; gap: 12px; min-height: 63px; padding: 9px 14px; border-top: 1px solid var(--line-soft); }
+.interview-awaiting-row:nth-child(even) { border-left: 1px solid var(--line-soft); }
+.interview-awaiting-role { display: block; min-width: 0; text-align: left; border: 0; background: none; cursor: pointer; padding: 0; }
+.interview-awaiting-role strong,.interview-awaiting-role span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.interview-awaiting-role strong { color: var(--ink-strong); font-size: .82rem; }
+.interview-awaiting-role span { margin-top: 4px; color: var(--muted); font-size: .72rem; }
+.interview-awaiting-stage { color: var(--muted); font-size: .72rem; white-space: nowrap; }
+.interview-awaiting-row .text-button { white-space: nowrap; font-size: .73rem; }
+@media(max-width:1100px) { .interview-awaiting-rows { grid-template-columns: 1fr; } .interview-awaiting-row:nth-child(even) { border-left: 0; } }
+.application-table:not(.is-compact) tbody td { height: 84px; padding-block: 16px; }
+.application-table.is-compact tbody td { height: 58px; padding-block: 6px; }
+.resume-file-library.list .resume-file-card { grid-template-columns: minmax(230px,1fr) minmax(100px,.35fr) 160px 180px; grid-template-areas: "resume-identity resume-tags resume-links resume-actions"; min-height: 76px; gap: 10px; }
+.resume-file-library.list details summary { display: flex; padding: 10px; gap: 8px; }
+.resume-file-library.list details[open] { grid-column: 1 / -1; grid-row: 2; }
+.resume-file-library.list details[open] summary { justify-content: flex-start; }
+.resume-file-library.list .resume-file-tags { padding: 8px 0; }
+.resume-file-library.list .resume-primary-actions { width: auto; }
+.resume-job-link { display: block; text-align: left; min-width: 0; overflow-wrap: anywhere; }
+.interview-job-group { min-width: 0; }
+.interview-round-history { border: 1px solid var(--line); border-radius: 10px; margin-top: 8px; }
+.interview-round-history > summary, .interview-review-editor > summary { padding: 13px 16px; color: var(--accent-strong); cursor: pointer; font-weight: 600; }
+.interview-review-editor { border: 1px solid var(--line); border-radius: 10px; }
+.interview-review-editor .modal-form-grid { padding: 12px; }
+@media(max-width:1200px) {
+  .resume-file-library.list .resume-file-card { grid-template-columns: minmax(220px,1fr) 135px 175px; grid-template-areas: "resume-identity resume-links resume-actions" "resume-tags resume-links resume-actions"; }
+  .resume-file-library.list .resume-file-tags { padding: 0 12px 8px; }
+  .resume-file-library.list details[open] { grid-row: 3; }
+}
+@media(max-width:800px) {
+  .resume-file-library.list .resume-file-card { grid-template-columns: minmax(0,1fr) auto; grid-template-areas: "resume-identity resume-actions" "resume-tags resume-links"; }
+  .resume-file-library.list .resume-primary-actions { padding: 8px; }
+}

@@ -72,7 +72,7 @@ export const navigation = [
   ["applications", "投递管理", BriefcaseBusiness],
   ["targets", "意向清单", Target],
   ["tasks", "行动清单", ListTodo],
-  ["interviews", "面试复盘", MessageSquareText],
+  ["interviews", "面试管理", MessageSquareText],
   ["offers", "Offer 对比", BadgeDollarSign],
   ["resumes", "简历汇总", FileText],
   ["profile", "个人资料库", UserRound],

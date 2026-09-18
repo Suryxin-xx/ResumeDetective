@@ -3,7 +3,8 @@ import { Building2, CalendarClock, CheckSquare2, Download, ExternalLink, Eye, Ey
 import { api, formatDateTime, jsonBody, todayISO } from "../api";
 import { ConfirmButton, Drawer, EmptyState, Field, Modal, PageHeader, Panel, Priority, StatusBadge } from "../components";
 import { stageStateChoices, stageStateLabel } from "../applicationProgress";
-import { interviewProgressLabel, interviewResultLabel, preferredInterview } from "../interviewProgress";
+import { applicationInterviewProgress, applicationInterviewStateLabel, effectiveStageState, interviewProgressLabel, interviewResultLabel, preferredInterview } from "../interviewProgress";
+import { usePageScroll, useViewPreference } from "../viewPreferences";
 import { completedTimeLabel, matchesStageTimeFilter, stageTimeLabel, stageTimeRelative, stageTimeTone, stageTimeValue, type StageTimeFilter } from "../stageSchedule";
 import type { PageProps } from "../App";
 import type { Application, Interview } from "../types";
@@ -18,12 +19,27 @@ const stageTimeFilters:StageTimeFilter[]=["全部时间","已逾期","今天","�
 function hashSelection() { const params = new URLSearchParams(window.location.hash.split("?")[1] || ""); const time=params.get("time") as StageTimeFilter; return { status: params.get("status") || "", stage: params.get("stage") || "", time:stageTimeFilters.includes(time)?time:"全部时间", sort:params.get("sort")||"updated", application: Number(params.get("application") || 0) }; }
 
 export default function ApplicationsPage({ data, refresh, go, newSignal, consumeNewSignal }: PageProps & { newSignal: number; consumeNewSignal: () => void }) {
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState(() => hashSelection().status || "全部");
-  const [categoryFilter, setCategoryFilter] = useState("全部类型");
-  const [stageFilter, setStageFilter] = useState(() => hashSelection().stage || "全部进展");
-  const [timeFilter, setTimeFilter] = useState<StageTimeFilter>(()=>hashSelection().time);
-  const [sort, setSort] = useState(()=>hashSelection().sort);
+  const [query, setQuery] = useViewPreference("applications-query", "");
+  const [filter, setFilter] = useViewPreference("applications-filter", "全部");
+  const [categoryFilter, setCategoryFilter] = useViewPreference("applications-category", "全部类型");
+  const [stageFilter, setStageFilter] = useViewPreference("applications-stage", "全部进展");
+  const [timeFilter, setTimeFilter] = useViewPreference<StageTimeFilter>("applications-time", "全部时间");
+  const [sort, setSort] = useViewPreference("applications-sort", "updated");
+  const [compact, setCompact] = useViewPreference("applications-compact", true);
+  const [savedView, setSavedView] = useState<string>(() => { try { return localStorage.getItem("applications-saved-view-v1") || ""; } catch { return ""; } });
+  usePageScroll("applications-scroll");
+  function saveView() {
+    const value = JSON.stringify({ query, filter, categoryFilter, stageFilter, timeFilter, sort, hideTerminal });
+    try { localStorage.setItem("applications-saved-view-v1", value); setSavedView(value); window.alert("已保存为常用筛选，下次打开仍可一键应用。"); } catch { window.alert("浏览器不允许保存偏好，请检查本地存储权限。"); }
+  }
+  function applyView() {
+    try {
+      const value = JSON.parse(savedView);
+      for (const key of ["query", "filter", "categoryFilter", "stageFilter", "timeFilter", "sort"]) if (typeof value[key] !== "string") return;
+      setQuery(value.query); setFilter(value.filter); setCategoryFilter(value.categoryFilter); setStageFilter(value.stageFilter);
+      setTimeFilter(stageTimeFilters.includes(value.timeFilter) ? value.timeFilter : "全部时间"); setSort(value.sort); setHideTerminal(value.hideTerminal !== false);
+    } catch { window.alert("常用筛选不可用，请重新保存。"); }
+  }
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [detailId, setDetailId] = useState<number | null>(null);
   const [quickId, setQuickId] = useState<number | null>(null);
@@ -37,25 +53,25 @@ export default function ApplicationsPage({ data, refresh, go, newSignal, consume
   }, [newSignal, consumeNewSignal]);
   useEffect(() => localStorage.setItem("applications-hide-terminal", String(hideTerminal)), [hideTerminal]);
   useEffect(() => {
-    const syncHash = () => { const selection = hashSelection(); if (selection.status) setFilter(selection.status); if (selection.stage) setStageFilter(selection.stage); setTimeFilter(selection.time); setSort(selection.sort); if (selection.application) { setFilter("全部"); setDetailId(selection.application); requestAnimationFrame(() => document.getElementById(`application-${selection.application}`)?.scrollIntoView({ behavior: "smooth", block: "center" })); } };
+    const syncHash = () => { const selection = hashSelection(); if (!window.location.hash.includes("?")) return; setQuery(""); setCategoryFilter("全部类型"); setFilter(selection.status || "全部"); setStageFilter(selection.stage || "全部进展"); setTimeFilter(selection.time); setSort(selection.sort); if (selection.application) setDetailId(selection.application); };
     syncHash(); window.addEventListener("hashchange", syncHash); return () => window.removeEventListener("hashchange", syncHash);
   }, []);
 
+  const interviewsByApplication=useMemo(()=>{const map=new Map<number,Interview[]>();for(const interview of data.interviews){const records=map.get(interview.applicationId);if(records)records.push(interview);else map.set(interview.applicationId,[interview]);}return map},[data.interviews]);
   const filtered = useMemo(() => data.applications.filter((item) => {
     const text = `${item.companyName} ${item.positionName} ${item.tags} ${item.category}`.toLowerCase();
     if (query && !text.includes(query.toLowerCase())) return false;
     if (categoryFilter !== "全部类型" && item.category !== categoryFilter) return false;
-    if (stageFilter !== "全部进展" && item.stageState !== stageFilter) return false;
+    if (stageFilter !== "全部进展" && effectiveStageState(item, interviewsByApplication.get(item.id) || []) !== stageFilter) return false;
     if (!matchesStageTimeFilter(item, timeFilter)) return false;
     if (hideTerminal && filter !== "终止" && terminalStatuses.has(item.currentStatus)) return false;
     if (filter === "全部") return true;
     if (filter === "流程中") return !terminalStatuses.has(item.currentStatus) && item.currentStatus !== "Offer";
     if (groupedStatuses[filter]) return groupedStatuses[filter].includes(item.currentStatus);
     return filter === "终止" ? terminalStatuses.has(item.currentStatus) : item.currentStatus === filter;
-  }).sort((a,b)=>{ const terminalOrder=Number(terminalStatuses.has(a.currentStatus))-Number(terminalStatuses.has(b.currentStatus)); if(terminalOrder)return terminalOrder; if(sort==="schedule")return stageTimeValue(a)-stageTimeValue(b)||b.priority-a.priority; return sort==="company"?a.companyName.localeCompare(b.companyName,"zh-CN"):sort==="priority"?b.priority-a.priority:new Date(b.statusUpdateTime).getTime()-new Date(a.statusUpdateTime).getTime(); }), [data.applications, query, filter, categoryFilter, stageFilter, timeFilter, sort, hideTerminal]);
+  }).sort((a,b)=>{ const terminalOrder=Number(terminalStatuses.has(a.currentStatus))-Number(terminalStatuses.has(b.currentStatus)); if(terminalOrder)return terminalOrder; if(sort==="schedule")return stageTimeValue(a)-stageTimeValue(b)||b.priority-a.priority; return sort==="company"?a.companyName.localeCompare(b.companyName,"zh-CN"):sort==="priority"?b.priority-a.priority:new Date(b.statusUpdateTime).getTime()-new Date(a.statusUpdateTime).getTime(); }), [data.applications, interviewsByApplication, query, filter, categoryFilter, stageFilter, timeFilter, sort, hideTerminal]);
   const categoryOptions=useMemo(()=>["全部类型",...Array.from(new Set(data.applications.map(item=>item.category).filter(Boolean)))],[data.applications]);
   const resumeOptions=useMemo(()=>existingResumeOptions(data.applications),[data.applications]);
-  const interviewsByApplication=useMemo(()=>{const map=new Map<number,Interview[]>();for(const interview of data.interviews){const records=map.get(interview.applicationId);if(records)records.push(interview);else map.set(interview.applicationId,[interview]);}return map},[data.interviews]);
   const selectedItems=filtered.filter(item=>selected.has(item.id));
   const toggleSelected=(id:number)=>setSelected(current=>{const next=new Set(current);next.has(id)?next.delete(id):next.add(id);return next});
   const clearFilters=()=>{setQuery("");setFilter("全部");setCategoryFilter("全部类型");setStageFilter("全部进展");setTimeFilter("全部时间");setSort("updated");setHideTerminal(false);setSelected(new Set());setDetailId(null)};
@@ -115,13 +131,17 @@ export default function ApplicationsPage({ data, refresh, go, newSignal, consume
           <select className="compact-select" value={sort} onChange={event=>setSort(event.target.value)}><option value="updated">最近更新</option><option value="schedule">环节时间最近</option><option value="priority">优先级</option><option value="company">公司名称</option></select>
           <button type="button" className={`terminal-toggle ${hideTerminal ? "active" : ""}`} onClick={()=>setHideTerminal(value=>!value)}>{hideTerminal?<EyeOff size={14}/>:<Eye size={14}/>} {hideTerminal?"已隐藏终止":"显示终止"}</button>
           <span className="result-count"><Filter size={14} />{filtered.length} 条</span>
+          <button className="text-button" onClick={() => setCompact(value => !value)}>{compact ? "舒适行距" : "紧凑行距"}</button>
+          <button className="text-button" onClick={saveView}>保存常用筛选</button>
+          {savedView && <button className="text-button" onClick={applyView}>应用常用筛选</button>}
+          <button className="text-button" onClick={clearFilters}>重置筛选</button>
         </div>
       </Panel>
       {selectedItems.length>0&&<div className="bulk-toolbar"><span><CheckSquare2 size={16}/>已选择 <strong>{selectedItems.length}</strong> 条</span><button className="secondary-button" onClick={()=>exportApplicationsCSV(selectedItems)}><Download size={15}/>导出 CSV</button><button className="secondary-button" onClick={()=>void exportApplicationsImage(selectedItems)}><ImageDown size={15}/>生成分享图</button><button className="text-button" onClick={()=>setSelected(new Set())}>取消选择</button></div>}
       <Panel className="table-panel">
         {filtered.length ? (
           <div className="data-table-wrap">
-            <table className="data-table application-table">
+            <table className={`data-table application-table ${compact ? "is-compact" : ""}`}>
               <thead><tr><th className="check-column"><input type="checkbox" aria-label="全选当前结果" checked={filtered.length>0&&filtered.every(item=>selected.has(item.id))} onChange={event=>setSelected(event.target.checked?new Set(filtered.map(item=>item.id)):new Set())}/></th><th>公司 / 岗位</th><th>当前环节</th><th>环节状态</th><th>环节时间</th><th>投递日期</th><th>状态更新时间</th><th>优先级</th><th aria-label="操作" /></tr></thead>
               <tbody>{filtered.map((item) => (
                 <ApplicationRow key={item.id} item={item} interviews={interviewsByApplication.get(item.id)||[]} selected={selected.has(item.id)} onSelect={()=>toggleSelected(item.id)} onQuick={()=>setQuickId(item.id)} onDetails={()=>setDetailId(item.id)} />
@@ -130,7 +150,7 @@ export default function ApplicationsPage({ data, refresh, go, newSignal, consume
           </div>
         ) : <EmptyState title="没有符合条件的投递" description="换一个筛选条件，或新建一条投递记录。" action={<button className="secondary-button" onClick={clearFilters}>清除全部筛选</button>} />}
       </Panel>
-      {quickId&&data.applications.find(item=>item.id===quickId)&&<QuickProgressModal item={data.applications.find(item=>item.id===quickId)!} onClose={()=>setQuickId(null)} refresh={refresh}/>}
+      {quickId&&data.applications.find(item=>item.id===quickId)&&<QuickProgressModal item={data.applications.find(item=>item.id===quickId)!} onClose={()=>setQuickId(null)} refresh={refresh} interviews={interviewsByApplication.get(quickId)||[]} go={go}/>}
       {detailId&&data.applications.find(item=>item.id===detailId)&&<ApplicationDetailDrawer item={data.applications.find(item=>item.id===detailId)!} interviews={interviewsByApplication.get(detailId)||[]} resumeOptions={resumeOptions} onClose={()=>setDetailId(null)} refresh={refresh} go={go}/>}
       {showNew && <Modal title="新建投递" subtitle="默认记录为“已投递”，日期使用今天；之后都可以调整。" onClose={() => setShowNew(false)} wide><ApplicationForm onSubmit={create} onClose={() => setShowNew(false)} busy={busy} resumeOptions={resumeOptions} /></Modal>}
     </>
@@ -138,19 +158,20 @@ export default function ApplicationsPage({ data, refresh, go, newSignal, consume
 }
 
 function ApplicationRow({ item, interviews, selected, onSelect, onQuick, onDetails }: { item: Application; interviews:Interview[]; selected:boolean; onSelect:()=>void; onQuick:()=>void; onDetails:()=>void }) {
-  const currentInterview=preferredInterview(interviews);
+  const currentInterview=applicationInterviewProgress(item, interviews).interview;
   return <tr id={`application-${item.id}`} className={`${terminalStatuses.has(item.currentStatus) ? "terminal-row" : ""} status-row-${item.currentStatus.replace(/\s/g,'-')}`}>
     <td className="check-column"><input type="checkbox" checked={selected} onChange={onSelect} aria-label={`选择 ${item.companyName} ${item.positionName}`}/></td>
     <td><div className="entity-cell"><span className="company-avatar">{item.companyName.slice(0, 1)}</span><span><strong>{item.companyName}</strong><small>{item.positionName}{item.city ? ` · ${item.city}` : ""}</small></span></div></td>
     <td><button type="button" className="quick-stage-trigger" onClick={onQuick} title="快速更新当前环节"><span className="application-stage-cell"><StatusBadge value={item.currentStatus}/>{currentInterview&&<small>{interviewProgressLabel(currentInterview)}</small>}</span><Zap size={13}/></button></td>
-    <td><button type="button" className="stage-state-trigger" onClick={onQuick} title="快速更新环节状态">{stageStateLabel(item.stageState)}</button></td>
+    <td><button type="button" className="stage-state-trigger" onClick={onQuick} title="快速更新环节状态">{applicationInterviewStateLabel(item, interviews) || stageStateLabel(item.stageState)}</button></td>
     <td><button type="button" className={`stage-time-cell tone-${stageTimeTone(item)}`} onClick={onQuick} title={item.stageTimeNote||"设置环节时间"}><CalendarClock size={14}/><span><strong>{stageTimeRelative(item)|| (item.stageState==="已安排"?"待补充时间":"—")}</strong>{item.stageCompletedAt&&item.stageScheduledAt&&<small>原计划 {stageTimeLabel(item)}</small>}</span></button></td>
     <td>{item.appliedAt || "—"}</td><td>{formatDateTime(item.statusUpdateTime)}</td><td><Priority value={item.priority}/></td>
     <td><div className="row-actions">{item.jobLink&&<a className="icon-button" href={item.jobLink} target="_blank" rel="noreferrer" title="打开岗位链接" aria-label="打开岗位链接"><Link2 size={14}/></a>}{item.resumePath&&<a className="icon-button" href={`/resume/${item.id}`} target="_blank" rel="noreferrer" title="直接打开简历" aria-label="直接打开简历"><FileText size={14}/></a>}<button className="row-toggle" onClick={onDetails}>查看详情</button></div></td>
   </tr>;
 }
 
-function QuickProgressModal({item,onClose,refresh}:{item:Application;onClose:()=>void;refresh:()=>Promise<void>}){
+function QuickProgressModal({item,onClose,refresh,interviews,go}:{item:Application;onClose:()=>void;refresh:()=>Promise<void>;interviews:Interview[];go:(page:string)=>void}){
+  const interview = applicationInterviewProgress(item, interviews).interview;
   const [busy, setBusy] = useState(false);
   const [currentStatus,setCurrentStatus]=useState(item.currentStatus);
   const [stageState,setStageState]=useState(item.stageState);
@@ -175,6 +196,7 @@ function QuickProgressModal({item,onClose,refresh}:{item:Application;onClose:()=
     catch(reason){window.alert(reason instanceof Error?reason.message:"环节更新失败");setBusy(false);}
   }
   return <Modal title="快速更新进度" subtitle={`${item.companyName} · ${item.positionName}`} onClose={onClose}><form onSubmit={update} className="quick-progress-form">
+    {interview && currentStatus === item.currentStatus && <div className="modal-note">当前面试进展以“{interview.round}”记录为准。修改面试结果或安排时间，请同步更新该轮记录。<button type="button" className="text-button" onClick={() => { onClose(); go(`interviews?interview=${interview.id}`); }}>编辑本轮面试</button></div>}
     <Field label="当前环节"><select name="currentStatus" value={currentStatus} autoFocus onChange={event=>changeStatus(event.target.value)}>{(statuses.includes(item.currentStatus)?statuses:[item.currentStatus,...statuses]).map(value=><option key={value}>{value}</option>)}</select></Field>
     <Field label="这一步现在怎样了？" hint="只描述当前一步；进入下一环节时再修改上方选项。"><select name="stageState" value={stageState} onChange={event=>setStageState(event.target.value)}>{stageStateChoices(item.stageState).map(choice=><option key={choice.value} value={choice.value}>{choice.label}</option>)}</select></Field>
     <div className="stage-state-help"><span><b>待我处理</b>还有测评、材料或准备工作没做</span><span><b>已安排时间</b>已经收到具体时间，尚未进行</span><span><b>等待公司结果</b>我方已完成，等待推进或通知</span></div>

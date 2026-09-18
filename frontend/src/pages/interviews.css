@@ -87,10 +87,20 @@
   gap: 11px;
 }
 
-.interview-awaiting-item span,
-.interview-awaiting-item strong,
-.interview-awaiting-item small {
+.interview-awaiting-item > div > span:not(.status-badge),
+.interview-awaiting-item > div > span > strong,
+.interview-awaiting-item > div > span > small {
   display: block;
+}
+
+.interview-awaiting-item .status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  align-self: center;
+  line-height: 1;
+  min-height: 28px;
 }
 
 .interview-awaiting-item span {

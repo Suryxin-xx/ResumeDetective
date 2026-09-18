@@ -19,7 +19,7 @@
 <p align="center"><img src="screenshots/v4-overview.png" alt="ResumeDetective 总览页面" width="100%"></p>
 
 > [!TIP]
-> **v4.5.4：** 首页将近期面试、待补充安排、等待下一轮与结果待通知按行动优先级重新组织；没有填写时间的新面试不再被旧记录遮挡，面试页也能直接补全尚未建立面试记录的岗位。本次不修改数据库结构。
+> **v4.6.0：** 面试管理按岗位归集多轮记录，统一“等待结果”和“本轮通过、等待后续通知”的表达；投递支持筛选记忆、常用筛选和紧凑行距；简历列表可展开关联岗位直接跳转；Offer 分开展示首年与常规年现金估算。本次不修改数据库结构，旧数据直接兼容。
 >
 > **v4.5.3：** 已有投递现在可以修正公司和岗位名称，并同步反映到面试、Offer、简历汇总与 Excel 镜像；手动行动任务支持修改名称、日期、优先级和备注。本次不修改数据库结构，也不会自动改名或解除已绑定简历。
 >
@@ -199,7 +199,7 @@ go run ./cmd/resumedetective --data-dir .\local-artifacts\dev-data --no-browser
 ### Windows 正式构建
 
 ```powershell
-.\scripts\atuo.bat -Version 4.5.4
+.\scripts\atuo.bat -Version 4.6.0
 ```
 
 构建入口依次执行仓库安全扫描、React/TypeScript 构建、Go 测试、`go vet`、Windows GUI EXE 构建、版本资源写入、虚构演示库生成、ZIP 压缩和 SHA-256 生成。

@@ -35,6 +35,7 @@ type EditorState = Offer | "new" | null;
 
 const numericValue = (value: number | undefined | null) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
 const total = (offer: Offer) => numericValue(offer.monthlySalary) * numericValue(offer.salaryMonths) + numericValue(offer.bonus) + numericValue(offer.signingBonus) + numericValue(offer.otherCompensation);
+const recurringTotal = (offer: Offer) => total(offer) - numericValue(offer.signingBonus);
 const scoreValue = (value: number | undefined | null) => Math.min(5, Math.max(1, numericValue(value) || 3));
 const score = (offer: Offer) => Math.round(((scoreValue(offer.growthScore) + scoreValue(offer.interestScore) + scoreValue(offer.locationScore) + scoreValue(offer.stabilityScore) + (6 - scoreValue(offer.workIntensity))) / 25) * 100);
 const money = (value: number | null | undefined) => {
@@ -198,18 +199,18 @@ export default function OffersPage({ data, refresh }: PageProps) {
 
       <section className="offer-summary-grid" aria-label="Offer 概览">
         <article><BadgeDollarSign /><span>已记录 Offer</span><strong>{data.offers.length}</strong></article>
-        <article><TrendingUp /><span>最高总包估算 · 有效 Offer</span><strong title="仅统计未拒绝、未过期的 Offer">{highestValidTotal === null ? "暂无有效 Offer" : money(highestValidTotal)}</strong></article>
+        <article><TrendingUp /><span>最高首年现金估算 · 有效 Offer</span><strong title="含一次性签字费；仅统计未拒绝、未过期的 Offer">{highestValidTotal === null ? "暂无有效 Offer" : money(highestValidTotal)}</strong></article>
         <article><CalendarClock /><span>最近决策截止 · 有效 Offer</span><strong>{nearestDeadline || "无近期截止"}</strong></article>
       </section>
 
-      <Panel title="横向比较" description="总包 = 月薪 × 薪资月数 + 奖金 + 签字费 + 其他现金；最高总包和截止日期只统计未拒绝、未过期的有效 Offer。评分仅用于辅助回忆。">
+      <Panel title="横向比较" description="首年现金含一次性签字费；常规年估算不含签字费。奖金和其他现金均按所填金额估算，不代表保证收入；薪资月数已包含的奖金请勿重复填写。">
         {sorted.length ? <div className="offer-table-wrap" role="region" aria-label="Offer 横向比较表" tabIndex={0}>
-          <table className="offer-table"><thead><tr><th>公司 / 岗位</th><th>总包估算</th><th>月薪结构</th><th>综合参考</th><th>决策状态</th><th>截止日期</th><th /> </tr></thead>
+          <table className="offer-table"><thead><tr><th>公司 / 岗位</th><th>现金估算</th><th>月薪结构</th><th>综合参考</th><th>决策状态</th><th>截止日期</th><th /> </tr></thead>
             <tbody>{sorted.map((offer) => {
               const invalid = isOfferInvalid(offer);
               return <tr key={offer.id} className={invalid ? "offer-row-inactive" : undefined}>
                 <td><strong>{offer.companyName}</strong><small>{offer.positionName}{offer.department ? ` · ${offer.department}` : ""}</small></td>
-                <td className="offer-total"><span>{money(total(offer))}</span>{invalid && <small>不计入概览</small>}</td>
+                <td className="offer-total"><small>首年</small><span>{money(total(offer))}</span><small>常规年 {money(recurringTotal(offer))}</small>{invalid && <small>不计入概览</small>}</td>
                 <td>{offer.monthlySalary === undefined || offer.monthlySalary === null ? "未填写" : `${money(offer.monthlySalary)} × ${offer.salaryMonths || "未填写"}`}</td>
                 <td><span className="offer-score">{score(offer)}</span></td>
                 <td><span className={`decision-badge decision-${offer.decisionStatus}`}>{offer.decisionStatus || "未设置"}</span></td>
@@ -245,7 +246,7 @@ export default function OffersPage({ data, refresh }: PageProps) {
             <Field label="工作地点"><input name="location" defaultValue={editing === "new" ? "" : editing.location} /></Field>
             <Field label="税前月薪"><input name="monthlySalary" type="number" min="0" step="0.1" defaultValue={editing === "new" ? "" : editing.monthlySalary ?? ""} /></Field>
             <Field label="薪资月数" hint="通常为 12；留空时按接口默认值处理"><input name="salaryMonths" type="number" min="1" step="0.5" defaultValue={editing === "new" ? 12 : editing.salaryMonths ?? ""} /></Field>
-            <Field label="奖金"><input name="bonus" type="number" min="0" step="0.1" defaultValue={editing === "new" ? "" : editing.bonus ?? ""} /></Field>
+            <Field label="额外年度奖金" hint="不重复计入薪资月数已包含的奖金；浮动条件请记录到备注。"><input name="bonus" type="number" min="0" step="0.1" defaultValue={editing === "new" ? "" : editing.bonus ?? ""} /></Field>
             <Field label="签字费"><input name="signingBonus" type="number" min="0" step="0.1" defaultValue={editing === "new" ? "" : editing.signingBonus ?? ""} /></Field>
             <Field label="其他现金"><input name="otherCompensation" type="number" min="0" step="0.1" defaultValue={editing === "new" ? "" : editing.otherCompensation ?? ""} /></Field>
             <Field label="接受截止日期"><input name="deadline" type="date" defaultValue={editing === "new" ? "" : editing.deadline} /></Field>

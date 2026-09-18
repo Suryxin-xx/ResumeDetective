@@ -4,14 +4,16 @@ import { api } from "../api";
 import { EmptyState, Field, Modal, PageHeader, Panel, StatusBadge } from "../components";
 import type { PageProps } from "../App";
 import type { Application } from "../types";
+import { usePageScroll, useViewPreference } from "../viewPreferences";
 
 type ResumeGroup = { key: string; actualName: string; displayName: string; path: string; applications: Application[] };
 const fileName = (path: string) => path.split(/[\\/]/).pop() || "尚未绑定简历";
 const preferredName = (apps: Application[]) => apps.length === 1 ? `${apps[0].companyName} · ${apps[0].positionName}` : `${apps[0].companyName} · ${apps[0].positionName} 等 ${apps.length} 个岗位`;
 
-export default function ResumesLibraryPage({ data, refresh }: PageProps) {
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("全部");
+export default function ResumesLibraryPage({ data, refresh, go }: PageProps) {
+  const [query, setQuery] = useViewPreference("resumes-query", "");
+  const [category, setCategory] = useViewPreference("resumes-category", "全部");
+  usePageScroll("resumes-scroll");
   const [view, setView] = useState<"list" | "card">(() => localStorage.getItem("resume-view") === "card" ? "card" : "list");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [binding,setBinding]=useState<ResumeGroup|null>(null);
@@ -44,7 +46,7 @@ export default function ResumesLibraryPage({ data, refresh }: PageProps) {
       <header><span className={`resume-file-symbol ${group.path ? "" : "empty"}`}><FileText size={22} /></span><div className="resume-file-identity"><h3>{group.displayName}</h3><p title={group.actualName}>{group.path ? group.actualName : "尚未绑定简历文件"}</p></div></header>
       <div className="resume-file-tags">{Array.from(new Set(group.applications.flatMap((app) => [app.category, ...app.tags.split(/[,，]/)]).map((value) => value.trim()).filter(Boolean))).slice(0, 6).map((tag) => <span key={tag}>{tag}</span>)}</div>
       <div className="resume-primary-actions">{group.path?<a href={`/resume/${group.applications[0].id}`} target="_blank" rel="noreferrer" className="primary-button">打开简历 <ExternalLink size={14}/></a>:<button type="button" className="secondary-button" disabled={!boundGroups.length} onClick={()=>setBinding(group)}><Link2 size={14}/>绑定简历</button>}<button type="button" className="icon-button" disabled={!group.path||Boolean(renaming)} onClick={()=>void rename(group)} title="按设置中的规则重命名" aria-label={`按规则重命名 ${group.displayName}`}><FilePenLine size={15}/></button></div>
-      <details><summary><span>关联投递</span><strong>{group.applications.length}</strong></summary><div className="resume-linked-jobs">{group.applications.map((app) => <div key={app.id}><span><strong>{app.companyName}</strong><small>{app.positionName}</small></span><StatusBadge value={app.currentStatus} /><span className="resume-linked-actions">{group.path&&<a href={`/resume/${app.id}`} target="_blank" rel="noreferrer" title="打开该投递绑定的简历" aria-label={`打开 ${app.companyName} ${app.positionName} 绑定的简历`}><FileText size={14}/></a>}{app.jobLink&&<a href={app.jobLink} target="_blank" rel="noreferrer" title="打开岗位链接" aria-label={`打开 ${app.companyName} ${app.positionName} 的岗位链接`}><Link2 size={14}/></a>}</span></div>)}</div></details>
+      <details><summary><span>关联投递</span><strong>{group.applications.length}</strong></summary><div className="resume-linked-jobs">{group.applications.map((app) => <div key={app.id}><button className="text-button resume-job-link" onClick={() => go(`applications?application=${app.id}`)}><strong>{app.companyName}</strong><small>{app.positionName}</small></button><StatusBadge value={app.currentStatus} /><span className="resume-linked-actions">{group.path&&<a href={`/resume/${app.id}`} target="_blank" rel="noreferrer" title="打开该投递绑定的简历" aria-label={`打开 ${app.companyName} ${app.positionName} 绑定的简历`}><FileText size={14}/></a>}{app.jobLink&&<a href={app.jobLink} target="_blank" rel="noreferrer" title="打开岗位链接" aria-label={`打开 ${app.companyName} ${app.positionName} 的岗位链接`}><Link2 size={14}/></a>}</span></div>)}</div></details>
     </article>)}</div> : <EmptyState title="没有符合条件的简历" description="在投递详情中绑定 PDF、DOC 或 DOCX。" action={<button className="secondary-button" onClick={()=>{setQuery("");setCategory("全部")}}><FolderSearch size={16}/>清除全部筛选</button>} />}</Panel>
     {binding&&<Modal title="复用已有简历" subtitle={`${binding.applications[0].companyName} · ${binding.applications[0].positionName}`} onClose={()=>setBinding(null)}><form onSubmit={bindExisting}><div className="modal-form-grid single-column"><Field label="选择已有简历" hint="只建立关联，不复制文件；之后重命名时所有关联会同步更新。"><select name="sourceApplicationId" required defaultValue=""><option value="" disabled>选择一份已绑定简历</option>{boundGroups.map(group=><option key={group.path} value={group.applications[0].id}>{group.actualName} · {group.displayName}</option>)}</select></Field></div><div className="modal-note">需要上传新文件时，请在“投递管理”中展开该岗位后上传。</div><div className="modal-actions"><button type="button" className="secondary-button" onClick={()=>setBinding(null)}>取消</button><button className="primary-button" disabled={bindingBusy}>{bindingBusy?"关联中…":"确认关联"}</button></div></form></Modal>}
   </>;

@@ -1,9 +1,8 @@
-import { useState } from "react";
 import { ArrowRight, BriefcaseBusiness, CalendarClock, CheckCircle2, Clock3, ExternalLink, MessageSquareText, TimerReset, TrendingUp, Video } from "lucide-react";
 import { api, formatDateTime } from "../api";
 import { EmptyState, PageHeader, Panel, StatusBadge } from "../components";
 import { stageStateLabel } from "../applicationProgress";
-import { interviewProgressLabel, nextInterviewRound, preferredInterview } from "../interviewProgress";
+import { applicationInterviewProgress, effectiveStageState, interviewProgressLabel } from "../interviewProgress";
 import { stageTimeLabel, stageTimeRelative, stageTimeTone, stageTimeValue } from "../stageSchedule";
 import type { PageProps } from "../App";
 import type { Application, Interview } from "../types";
@@ -19,31 +18,20 @@ const stageGroups = [
   { label: "已终止", keys: ["终止", "已终止", "未通过", "主动放弃", "流程结束"], filter: "终止" },
 ];
 
-function daysSince(value: string) { const time = new Date(value).getTime(); return Number.isFinite(time) ? Math.max(0, Math.floor((Date.now() - time) / 86_400_000)) : 0; }
-
 export default function OverviewV2Page({ data, go, refresh }: PageProps) {
-  const [showAllFocusInterviews, setShowAllFocusInterviews] = useState(false);
   const active = data.applications.filter((item) => !terminalStatuses.has(item.currentStatus));
-  const waitingCompany = active.filter(item=>item.stageState==="已完成，等待结果");
-  const longWaiting = waitingCompany.filter(item=>daysSince(item.statusUpdateTime)>=7).length;
   const recent = [...data.applications].sort((a, b) => new Date(b.statusUpdateTime).getTime() - new Date(a.statusUpdateTime).getTime()).slice(0, 6);
   const interviewMap = new Map<number, Interview[]>();
   data.interviews.forEach((interview) => interviewMap.set(interview.applicationId, [...(interviewMap.get(interview.applicationId) || []), interview]));
-  const currentInterviewMap = new Map(Array.from(interviewMap, ([applicationId, records]) => [applicationId, preferredInterview(records)]));
+  const currentState = (item: Application) => effectiveStageState(item, interviewMap.get(item.id) || []);
+  const waitingCompany = active.filter(item=>currentState(item)==="已完成，等待结果");
+  const currentInterviewMap = new Map(data.applications.map(item => [item.id, applicationInterviewProgress(item, interviewMap.get(item.id) || []).interview]));
   const interviewFocus = active.flatMap<InterviewFocusEntry>((item): InterviewFocusEntry[] => {
     const records = interviewMap.get(item.id) || [];
-    const interview = preferredInterview(records);
-    if (interview?.result === "待确认") return [{ item, interview, kind: "waiting" as const, nextRound: "" }];
-    if (interview?.result === "待面试") return [{ item, interview, kind: interview.interviewTime ? "scheduled" as const : "unscheduled" as const, nextRound: "" }];
-    if (!interview && interviewStatuses.has(item.currentStatus)) return [{ item, interview, kind: "unscheduled" as const, nextRound: "" }];
-    if (interview?.result === "通过" && interviewStatuses.has(item.currentStatus)) {
-      const nextRound = nextInterviewRound(interview.round);
-      const nextRoundRecorded = nextRound && records.some((record) => record.round === nextRound);
-      if (nextRound && !nextRoundRecorded) return [{ item, interview, kind: "next-round" as const, nextRound }];
-    }
-    return [];
+    const progress = applicationInterviewProgress(item, records);
+    return progress.kind === "history" ? [] : [{ item, interview: progress.interview, kind: progress.kind, nextRound: progress.nextRound }];
   });
-  const focusInterviews = interviewFocus.filter((entry) => entry.kind !== "waiting").sort((a, b) => {
+  const focusInterviews = interviewFocus.filter((entry) => entry.kind !== "waiting" && entry.kind !== "next-round").sort((a, b) => {
     const rank: Record<InterviewFocusEntry["kind"], number> = { scheduled: 0, unscheduled: 1, "next-round": 2, waiting: 3 };
     const rankOrder = rank[a.kind] - rank[b.kind];
     if (rankOrder) return rankOrder;
@@ -54,39 +42,48 @@ export default function OverviewV2Page({ data, go, refresh }: PageProps) {
     return parseTimestamp(b.item.statusUpdateTime) - parseTimestamp(a.item.statusUpdateTime) || b.item.priority - a.item.priority;
   });
   const waitingInterviews = interviewFocus.filter((entry) => entry.kind === "waiting").sort((a, b) => parseTimestamp(b.interview?.interviewTime) - parseTimestamp(a.interview?.interviewTime));
-  const visibleFocusInterviews = showAllFocusInterviews ? focusInterviews : focusInterviews.slice(0, 4);
-  const hiddenFocusInterviewCount = Math.max(0, focusInterviews.length - 4);
+  const passedInterviews = interviewFocus.filter((entry) => entry.kind === "next-round");
+  const scheduledInterviews = focusInterviews.filter(entry => entry.kind === "scheduled");
+  const unscheduledInterviews = focusInterviews.filter(entry => entry.kind === "unscheduled");
   const grouped = stageGroups.map((group) => ({ ...group, count: group.keys.reduce((sum, key) => sum + (data.dashboard.stageCounts[key] || 0), 0) }));
   const maxStage = Math.max(1, ...grouped.map((item) => item.count));
   const schedules=active.filter(item=>item.stageScheduledAt&&!item.stageCompletedAt).sort((a,b)=>stageTimeValue(a)-stageTimeValue(b)||b.priority-a.priority);
   const visibleSchedules=schedules.slice(0,6);
   const overdueSchedules=schedules.filter(item=>stageTimeTone(item)==="overdue").length;
   const pulse = [
-    {value:"待处理",label:"待我处理",description:"测评、材料或准备还没完成",count:active.filter(item=>item.stageState==="待处理").length},
-    {value:"已安排",label:"已安排时间",description:"已经定好时间，等待进行",count:active.filter(item=>item.stageState==="已安排").length},
-    {value:"已完成，等待结果",label:"等待公司结果",description:longWaiting?`${longWaiting} 个已超过 7 天未变化`:"当前没有长期停滞",count:waitingCompany.length},
+    {value:"待处理",label:"待我处理",description:"测评、材料或准备还没完成",count:active.filter(item=>currentState(item)==="待处理").length},
+    {value:"已安排",label:"已安排时间",description:"已经定好时间，等待进行",count:active.filter(item=>currentState(item)==="已安排").length},
+    {value:"已完成，等待结果",label:"等待公司结果",description:"等待是正常流程，收到通知后再更新",count:waitingCompany.length},
   ];
   return <>
     <PageHeader title={data.settings?.config.workspaceName || "秋招工作台"} description="先看近期面试，再判断现在是你要行动，还是等待公司推进。" />
     {data.dashboard.demo && <div className="demo-banner"><div><strong>你正在查看虚构的演示工作台</strong><span>准备记录真实信息时，可以安全清除全部演示数据。</span></div><button className="secondary-button" onClick={async()=>{if(!confirm("清除发布包内置的全部演示数据？"))return;await api("/demo",{method:"DELETE"});await refresh();}}>清除演示数据</button></div>}
     <section className="overview-metrics" aria-label="投递概览">
       <button className="metric-card" onClick={()=>go("applications")}><BriefcaseBusiness/><span>全部投递</span><strong>{data.dashboard.total}</strong><small>查看全部岗位</small></button>
-      <button className="metric-card" onClick={()=>go("applications?status=流程中")}><TimerReset/><span>进行中</span><strong>{data.dashboard.active}</strong><small>{waitingCompany.length ? `${waitingCompany.length} 个等待公司结果` : "暂无等待结果的岗位"}</small></button>
+      <button className="metric-card" onClick={()=>go("applications?status=流程中")}><TimerReset/><span>进行中</span><strong>{active.length}</strong><small>{waitingCompany.length ? `${waitingCompany.length} 个等待公司结果` : "暂无等待结果的岗位"}</small></button>
       <button className="metric-card" onClick={()=>go("applications?status=面试阶段")}><MessageSquareText/><span>面试阶段</span><strong>{data.dashboard.interview}</strong><small>查看正在面试的投递</small></button>
       <button className="metric-card metric-positive" onClick={()=>go("offers")}><CheckCircle2/><span>Offer</span><strong>{data.dashboard.offers}</strong><small>进入横向对比与决策</small></button>
     </section>
-    {(focusInterviews.length > 0 || waitingInterviews.length > 0) && <Panel className="interview-focus-panel" title="近期面试与待安排" description="优先展示即将进行、尚未补充安排和等待下一轮的面试；等待公司结果单独收纳。" action={<button className="text-button" onClick={()=>go("interviews")}>进入面试管理 <ArrowRight size={14}/></button>}>
-      {visibleFocusInterviews.length > 0 && <div className="interview-focus-grid">{visibleFocusInterviews.map(({ item, interview, kind, nextRound }) => <article key={item.id} className={kind === "unscheduled" || kind === "next-round" ? "needs-schedule" : ""}>
-        <header><div><span>{kind === "next-round" ? `${interview?.round}已通过` : interview ? `${item.currentStatus} · ${interview.round}` : item.currentStatus}</span><h3>{item.companyName}</h3><p>{item.positionName}</p></div><StatusBadge value={kind === "next-round" ? `待安排${nextRound}` : kind === "unscheduled" ? "待补充安排" : interview?.result || item.stageState}/></header>
+    {(focusInterviews.length > 0 || waitingInterviews.length > 0 || passedInterviews.length > 0) && <Panel className="interview-focus-panel" title="面试日程与进展" description="确定时间的面试优先展示；尚未收到安排通知的岗位集中列出，不必提前填写时间。" action={<button className="text-button" onClick={()=>go("interviews")}>进入面试管理 <ArrowRight size={14}/></button>}>
+      {scheduledInterviews.length > 0 && <div className="interview-focus-grid scheduled-interview-grid" aria-label={`已定时间的面试，共 ${scheduledInterviews.length} 个`}>{scheduledInterviews.map(({ item, interview }) => <article key={item.id}>
+        <header><div><span>{Array.from(new Set([item.currentStatus, interview?.round])).filter(Boolean).join(" · ")}</span><h3>{item.companyName}</h3><p>{item.positionName}</p></div><StatusBadge value="待面试"/></header>
         <div className="interview-focus-schedule">
-          <span><CalendarClock size={15}/><strong>{kind === "next-round" ? `等待安排${nextRound}` : interview?.interviewTime ? formatDateTime(interview.interviewTime) : "面试时间待补充"}</strong></span>
-          <span><Video size={15}/>{kind === "next-round" ? `${interview?.round}复盘已保留，不会被覆盖` : interview ? [interview.round, interview.interviewMode].filter(Boolean).join(" · ") || "轮次与形式待补充" : "还没有面试安排记录"}</span>
-          {kind === "scheduled" && interview?.scheduleNotes && <p>{interview.scheduleNotes}</p>}
+          <span><CalendarClock size={15}/><strong>{formatDateTime(interview!.interviewTime)}</strong></span>
+          <span><Video size={15}/>{interview?.interviewMode || "形式待补充"}</span>
+          {interview?.scheduleNotes && <p>{interview.scheduleNotes}</p>}
         </div>
-        <footer><button className="text-button" onClick={()=>go(`applications?application=${item.id}`)}>查看投递</button>{kind === "scheduled" && interview?.meetingLink && <a className="secondary-button" href={interview.meetingLink} target="_blank" rel="noreferrer"><ExternalLink size={14}/>进入会议</a>}<button className="primary-button" onClick={()=>go(kind === "next-round" ? `interviews?application=${item.id}&round=${encodeURIComponent(nextRound)}` : interview ? `interviews?interview=${interview.id}` : `interviews?application=${item.id}`)}>{kind === "next-round" ? `安排${nextRound}` : interview ? "编辑安排" : "补充面试安排"}</button></footer>
+        <footer><button className="text-button" onClick={()=>go(`applications?application=${item.id}`)}>查看投递</button>{interview?.meetingLink && <a className="secondary-button" href={interview.meetingLink} target="_blank" rel="noreferrer"><ExternalLink size={14}/>进入会议</a>}<button className="primary-button" onClick={()=>go(`interviews?interview=${interview!.id}`)}>编辑安排</button></footer>
       </article>)}</div>}
-      {hiddenFocusInterviewCount > 0 && <div className="interview-focus-more"><button className="secondary-button" onClick={()=>setShowAllFocusInterviews((value)=>!value)}>{showAllFocusInterviews ? "收起重点面试" : `展开剩余 ${hiddenFocusInterviewCount} 条`} <ArrowRight className={showAllFocusInterviews ? "is-expanded" : ""} size={14}/></button></div>}
+      {unscheduledInterviews.length > 0 && <section className="interview-awaiting-notice">
+        <header><div><h3>等待安排通知 <span>{unscheduledInterviews.length}</span></h3><p>{scheduledInterviews.length ? "已进入面试阶段，具体时间待通知或待补充。" : "目前还没有确定时间的面试；收到通知后再补充即可。"}{unscheduledInterviews.length > 6 ? " 下方可滚动查看全部岗位。" : ""}</p></div></header>
+        <div className="interview-awaiting-rows" tabIndex={0} role="region" aria-label="所有等待安排通知的岗位">{unscheduledInterviews.map(({item,interview,nextRound}) => <div className="interview-awaiting-row" key={item.id}>
+          <button className="interview-awaiting-role" onClick={()=>go(`applications?application=${item.id}`)} title={`${item.companyName} · ${item.positionName}`}><strong>{item.companyName}</strong><span>{item.positionName}</span></button>
+          <span className="interview-awaiting-stage">{interview?.round || item.currentStatus}</span>
+          <button className="text-button" onClick={()=>go(interview ? `interviews?interview=${interview.id}` : `interviews?application=${item.id}&round=${encodeURIComponent(nextRound)}`)}>补充安排 <ArrowRight size={14}/></button>
+        </div>)}</div>
+      </section>}
       {waitingInterviews.length > 0 && <div className="interview-waiting-summary"><div><Clock3 size={17}/><span><strong>{waitingInterviews.length} 条面试结果待通知</strong><small>按最近面试时间收纳，不再占用重点安排位置。</small></span></div><button className="text-button" onClick={()=>go("interviews?result=待确认")}>查看等待结果 <ArrowRight size={14}/></button></div>}
+      {passedInterviews.length > 0 && <div className="interview-waiting-summary"><div><CheckCircle2 size={17}/><span><strong>{passedInterviews.length} 个岗位本轮通过，等待后续通知</strong><small>不会自动假定有下一轮；收到邀请后再添加安排。</small></span></div><button className="text-button" onClick={()=>go("interviews?result=通过")}>查看已通过 <ArrowRight size={14}/></button></div>}
     </Panel>}
     {schedules.length>0&&<Panel className="stage-schedule-panel" title="近期环节安排" description={overdueSchedules?`${overdueSchedules} 项已逾期；完成后请及时改为“等待公司结果”。`:"截止测评与固定安排统一按时间排列。"} action={<button className="text-button" onClick={()=>go("applications?sort=schedule")}>查看全部安排 <ArrowRight size={14}/></button>}><div className="stage-schedule-list">{visibleSchedules.map(item=><button key={item.id} onClick={()=>go(`applications?application=${item.id}`)}><span className={`schedule-date tone-${stageTimeTone(item)}`}><CalendarClock size={15}/><strong>{stageTimeRelative(item)}</strong></span><span className="schedule-role"><strong>{item.companyName}</strong><small>{item.positionName}</small></span><span className="schedule-stage"><StatusBadge value={item.currentStatus}/><small>{item.stageTimeType==="deadline"?"截止时间":"固定时间"}</small></span><span className="schedule-note">{item.stageTimeNote||stageTimeLabel(item)}</span><ArrowRight size={15}/></button>)}</div></Panel>}
     <div className="overview-main-grid">

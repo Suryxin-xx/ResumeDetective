@@ -1,6 +1,6 @@
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = "4.5.4",
+    [string]$Version = "4.6.0",
     [string]$ReleaseRoot = "",
     [switch]$ArchiveExisting
 )
@@ -59,6 +59,8 @@ try {
     }
     npm --prefix frontend run build
     if ($LASTEXITCODE -ne 0) { throw "Frontend build failed." }
+    node scripts/test_interview_progress.mjs
+    if ($LASTEXITCODE -ne 0) { throw "Interview workflow tests failed." }
     & $goExe test ./cmd/... ./internal/...
     if ($LASTEXITCODE -ne 0) { throw "Go tests failed." }
     & $goExe vet ./cmd/... ./internal/...
