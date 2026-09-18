@@ -4,12 +4,13 @@ import { api, formatDateTime, jsonBody } from "../api";
 import { ConfirmButton, EmptyState, Field, Modal, PageHeader, Panel, StatusBadge } from "../components";
 import { interviewResultLabel, interviewStage, nextInterviewRound } from "../interviewProgress";
 import type { PageProps } from "../App";
-import type { Interview } from "../types";
+import type { Application, Interview } from "../types";
 import "./interviews.css";
 
 const rounds = ["AI 面试", "一面", "二面", "三面", "HR 面", "其他"];
 const interviewModes = ["视频面试", "电话面试", "现场面试", "其他"];
 const terminalStatuses = new Set(["终止", "已终止", "未通过", "主动放弃", "流程结束"]);
+const interviewStatuses = new Set(["业务面试", "HR 面"]);
 const activeResults = new Set(["待面试", "待确认"]);
 const results = [
   { value: "待面试", label: "待面试（已安排，尚未进行）" },
@@ -21,17 +22,18 @@ const results = [
 function routeSelection() {
   const query = window.location.hash.split("?")[1] || "";
   const params = new URLSearchParams(query);
-  return { applicationId: Number(params.get("application")) || 0, interviewId: Number(params.get("interview")) || 0, hasQuery: Boolean(query) };
+  const result = params.get("result") || "全部结果";
+  return { applicationId: Number(params.get("application")) || 0, interviewId: Number(params.get("interview")) || 0, round: params.get("round") || "一面", result: ["待面试", "待确认", "通过", "未通过"].includes(result) ? result : "全部结果", hasQuery: Boolean(query) };
 }
 
 export default function InterviewsPage({ data, refresh }: PageProps) {
   const [selection] = useState(routeSelection);
   const [presetApplicationId, setPresetApplicationId] = useState(selection.applicationId);
-  const [presetRound, setPresetRound] = useState("一面");
+  const [presetRound, setPresetRound] = useState(selection.round);
   const [editor, setEditor] = useState<Interview | "new" | null>(() => data.interviews.find((item) => item.id === selection.interviewId) || (selection.applicationId ? "new" : null));
   const [showHistory, setShowHistory] = useState(false);
   const [query, setQuery] = useState("");
-  const [resultFilter, setResultFilter] = useState("全部结果");
+  const [resultFilter, setResultFilter] = useState(selection.result);
   const [saving, setSaving] = useState(false);
   const editing = editor !== null && editor !== "new" ? editor : null;
 
@@ -45,6 +47,14 @@ export default function InterviewsPage({ data, refresh }: PageProps) {
 
   const active = useMemo(() => sortActive(filteredRecords.filter((item) => activeResults.has(item.result))), [filteredRecords]);
   const history = useMemo(() => sortHistory(filteredRecords.filter((item) => !activeResults.has(item.result))), [filteredRecords]);
+  const recordedApplicationIds = useMemo(() => new Set(data.interviews.map((item) => item.applicationId)), [data.interviews]);
+  const unscheduledApplications = useMemo(() => {
+    if (resultFilter !== "全部结果" && resultFilter !== "待面试") return [];
+    return data.applications.filter((item) => {
+      const searchable = `${item.companyName} ${item.positionName} ${item.currentStatus}`.toLowerCase();
+      return interviewStatuses.has(item.currentStatus) && !recordedApplicationIds.has(item.id) && (!normalizedQuery || searchable.includes(normalizedQuery));
+    }).sort((a, b) => (parseTimestamp(b.statusUpdateTime) ?? 0) - (parseTimestamp(a.statusUpdateTime) ?? 0) || b.priority - a.priority);
+  }, [data.applications, normalizedQuery, recordedApplicationIds, resultFilter]);
   const activeApplications = data.applications.filter((item) => !terminalStatuses.has(item.currentStatus));
   const historicalApplications = data.applications.filter((item) => terminalStatuses.has(item.currentStatus));
 
@@ -116,9 +126,13 @@ export default function InterviewsPage({ data, refresh }: PageProps) {
         <div className="interviews-filter-row">
           <label className="interviews-search-box"><Search size={16} /><input aria-label="搜索面试记录" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索公司、岗位、安排或面试问题" /></label>
           <select className="compact-select interviews-result-filter" aria-label="筛选面试结果" value={resultFilter} onChange={(event) => setResultFilter(event.target.value)}><option>全部结果</option><option value="待面试">待面试</option><option value="待确认">结果待通知</option><option value="通过">通过</option><option value="未通过">未通过</option></select>
-          <span className="interviews-result-count">{active.length + history.length} 条记录</span>
+          <span className="interviews-result-count">{active.length + history.length} 条记录{unscheduledApplications.length ? ` · ${unscheduledApplications.length} 个待安排` : ""}</span>
         </div>
       </Panel>
+
+      {unscheduledApplications.length > 0 && <Panel className="interviews-awaiting-panel" title="待补充面试安排" description="这些投递已经进入业务面试或 HR 面，但还没有面试记录；补充时间后会自动进入近期安排。">
+        <div className="interview-awaiting-list">{unscheduledApplications.map((item) => <UnscheduledInterviewCard key={item.id} item={item} onSchedule={() => openNew(item.id)} />)}</div>
+      </Panel>}
 
       <Panel title="近期安排" description="只显示待面试和结果待通知；同一状态内按面试时间排列。">
         {active.length ? <div className="interviews-list">{active.map((item) => <InterviewCard key={item.id} item={item} refresh={refresh} onEdit={() => setEditor(item)} {...nextRoundProps(item)} />)}</div> : <EmptyState title="还没有符合条件的近期面试" description="收到面试通知后，先保存安排；面试结束后再补充问题和薄弱点。" />}
@@ -149,6 +163,10 @@ export default function InterviewsPage({ data, refresh }: PageProps) {
       </Modal>}
     </div>
   );
+}
+
+function UnscheduledInterviewCard({ item, onSchedule }: { item: Application; onSchedule: () => void }) {
+  return <article className="interview-awaiting-item"><div><StatusBadge value="待补充安排"/><span><strong>{item.companyName} · {item.positionName}</strong><small>{item.currentStatus} · 最近更新 {formatDateTime(item.statusUpdateTime)}</small></span></div><button type="button" className="primary-button" onClick={onSchedule}>补充面试安排<ArrowRight size={14}/></button></article>;
 }
 
 function InterviewCard({ item, refresh, onEdit, history = false, nextRound = "", nextRoundRecorded = false, onNextRound }: { item: Interview; refresh: () => Promise<void>; onEdit: () => void; history?: boolean; nextRound?: string; nextRoundRecorded?: boolean; onNextRound?: () => void }) {

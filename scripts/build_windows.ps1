@@ -1,6 +1,6 @@
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = "4.5.3",
+    [string]$Version = "4.5.4",
     [string]$ReleaseRoot = "",
     [switch]$ArchiveExisting
 )
