@@ -81,6 +81,7 @@ export type Interview = {
 };
 
 export type Offer = {
+  taxSettings?: string;
   id: number;
   applicationId: number;
   companyName: string;

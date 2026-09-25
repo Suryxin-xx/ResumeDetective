@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -137,6 +138,18 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("数据库版本 %d 高于当前支持的 %d", version, SchemaVersion)
 	}
+	if version > 0 && version < SchemaVersion {
+		backupDir := filepath.Join(filepath.Dir(path), "migration-backups")
+		if err := os.MkdirAll(backupDir, 0700); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("建立升级备份目录: %w", err)
+		}
+		backup := filepath.Join(backupDir, fmt.Sprintf("before-schema%d-", SchemaVersion)+time.Now().Format("20060102-150405.000000000")+".db")
+		if _, err := db.Exec("VACUUM INTO ?", backup); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("升级前备份失败，已停止升级: %w", err)
+		}
+	}
 	if _, err := db.Exec(schemaV6); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("初始化数据库: %w", err)
@@ -153,9 +166,17 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("修复旧版简历字段: %w", err)
 	}
+	if err := ensureOfferTaxColumn(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("升级 Offer 估算字段: %w", err)
+	}
 	if err := repairLegacyTargetRows(db); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("修复旧版意向数据: %w", err)
+	}
+	if err := ensureIncomePlans(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("升级收入方案: %w", err)
 	}
 	return &Store{db: db, dataDir: filepath.Dir(path)}, nil
 }

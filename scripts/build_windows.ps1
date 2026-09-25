@@ -1,6 +1,6 @@
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = "4.6.0",
+    [string]$Version = "4.7.0",
     [string]$ReleaseRoot = "",
     [switch]$ArchiveExisting
 )
@@ -61,6 +61,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Frontend build failed." }
     node scripts/test_interview_progress.mjs
     if ($LASTEXITCODE -ne 0) { throw "Interview workflow tests failed." }
+    node scripts/test_offer_tax.mjs
+    if ($LASTEXITCODE -ne 0) { throw "Offer tax tests failed." }
     & $goExe test ./cmd/... ./internal/...
     if ($LASTEXITCODE -ne 0) { throw "Go tests failed." }
     & $goExe vet ./cmd/... ./internal/...

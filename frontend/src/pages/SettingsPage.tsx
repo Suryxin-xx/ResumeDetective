@@ -6,7 +6,7 @@ import type { PageProps } from "../App";
 import type { AppConfig, MigrationStatus, UpdateInfo, UpdateNetworkConfig } from "../types";
 
 type BalanceResult={available:boolean;balances:Array<{currency:string;totalBalance:string;grantedBalance:string;toppedUpBalance:string}>;checkedAt:string};
-const navigationLabels:Record<string,string>={overview:"总览",applications:"投递管理",targets:"意向清单",tasks:"行动清单",interviews:"面试复盘",offers:"Offer 对比",resumes:"简历汇总",profile:"个人资料库",ai:"岗位准备",tools:"配套工具",settings:"设置"};
+const navigationLabels:Record<string,string>={overview:"总览",applications:"投递管理",targets:"意向清单",tasks:"行动清单",interviews:"面试复盘",offers:"Offer 对比",income:"收入计算",resumes:"简历汇总",profile:"个人资料库",ai:"岗位准备",tools:"配套工具",settings:"设置"};
 const protectedNavigation=new Set(["overview","applications","settings"]);
 
 function hasExplicitAppUpdateCheck(): boolean {

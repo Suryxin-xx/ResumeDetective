@@ -5,6 +5,7 @@ import { ConfirmButton, EmptyState, Field, Modal, PageHeader, Panel } from "../c
 import type { PageProps } from "../App";
 import type { Application, Offer } from "../types";
 import "./offers.css";
+import { estimateOffer, readTaxSettings } from "../offerTax";
 
 const scoreFields = [
   ["growthScore", "成长空间"], ["interestScore", "业务兴趣"], ["locationScore", "地点满意"],
@@ -54,7 +55,7 @@ function candidateLabel(application: Candidate) {
   return `${application.companyName} · ${application.positionName}（${application.currentStatus || "未设置"}）`;
 }
 
-export default function OffersPage({ data, refresh }: PageProps) {
+export default function OffersPage({ data, refresh, go }: PageProps) {
   const [editing, setEditing] = useState<EditorState>(null);
   const [candidateSearch, setCandidateSearch] = useState("");
   const [includeTerminated, setIncludeTerminated] = useState(false);
@@ -159,6 +160,8 @@ export default function OffersPage({ data, refresh }: PageProps) {
       const raw = values[key]?.trim() ?? "";
       payload[key] = raw === "" ? 0 : Number(raw);
     });
+    // Preserve historical calculator settings when editing Offer facts.
+    payload.taxSettings = editing && editing !== "new" ? editing.taxSettings || "" : "";
 
     setSaving(true);
     try {
@@ -210,12 +213,12 @@ export default function OffersPage({ data, refresh }: PageProps) {
               const invalid = isOfferInvalid(offer);
               return <tr key={offer.id} className={invalid ? "offer-row-inactive" : undefined}>
                 <td><strong>{offer.companyName}</strong><small>{offer.positionName}{offer.department ? ` · ${offer.department}` : ""}</small></td>
-                <td className="offer-total"><small>首年</small><span>{money(total(offer))}</span><small>常规年 {money(recurringTotal(offer))}</small>{invalid && <small>不计入概览</small>}</td>
+                <td className="offer-total"><small>首年税前</small><span>{money(total(offer))}</span><small>常规年税前 {money(recurringTotal(offer))}</small>{(() => { const settings = readTaxSettings(offer.taxSettings); const estimate = estimateOffer(offer, settings); return settings.enabled && <small>{estimate.error ? "到手估算参数待检查" : `预计全年到手 ${money(estimate.net)}（${settings.year}）`}</small>; })()}{invalid && <small>不计入概览</small>}</td>
                 <td>{offer.monthlySalary === undefined || offer.monthlySalary === null ? "未填写" : `${money(offer.monthlySalary)} × ${offer.salaryMonths || "未填写"}`}</td>
                 <td><span className="offer-score">{score(offer)}</span></td>
                 <td><span className={`decision-badge decision-${offer.decisionStatus}`}>{offer.decisionStatus || "未设置"}</span></td>
                 <td>{offer.deadline || "未填写"}</td>
-                <td><button className="row-toggle" onClick={() => setEditing(offer)}><Pencil size={14} />编辑</button></td>
+                <td><button className="row-toggle" onClick={() => setEditing(offer)}><Pencil size={14} />编辑</button><button className="row-toggle" onClick={() => go(`income?offer=${offer.id}`)}>收入计算</button></td>
               </tr>;
             })}</tbody>
           </table>
@@ -244,11 +247,11 @@ export default function OffersPage({ data, refresh }: PageProps) {
             </div>
             <Field label="部门 / 业务"><input name="department" defaultValue={editing === "new" ? "" : editing.department} /></Field>
             <Field label="工作地点"><input name="location" defaultValue={editing === "new" ? "" : editing.location} /></Field>
-            <Field label="税前月薪"><input name="monthlySalary" type="number" min="0" step="0.1" defaultValue={editing === "new" ? "" : editing.monthlySalary ?? ""} /></Field>
-            <Field label="薪资月数" hint="通常为 12；留空时按接口默认值处理"><input name="salaryMonths" type="number" min="1" step="0.5" defaultValue={editing === "new" ? 12 : editing.salaryMonths ?? ""} /></Field>
-            <Field label="额外年度奖金" hint="不重复计入薪资月数已包含的奖金；浮动条件请记录到备注。"><input name="bonus" type="number" min="0" step="0.1" defaultValue={editing === "new" ? "" : editing.bonus ?? ""} /></Field>
-            <Field label="签字费"><input name="signingBonus" type="number" min="0" step="0.1" defaultValue={editing === "new" ? "" : editing.signingBonus ?? ""} /></Field>
-            <Field label="其他现金"><input name="otherCompensation" type="number" min="0" step="0.1" defaultValue={editing === "new" ? "" : editing.otherCompensation ?? ""} /></Field>
+            <Field label="税前月薪（元/月）" hint="例如 15000 表示 1.5 万元/月"><input name="monthlySalary" type="number" min="0" step="0.1" defaultValue={editing === "new" ? "" : editing.monthlySalary ?? ""} /></Field>
+            <Field label="薪资月数" hint="留空按 12 薪；额外薪数不要再重复填入年度奖金。"><input name="salaryMonths" type="number" min="1" step="0.5" defaultValue={editing === "new" ? 12 : editing.salaryMonths ?? ""} /></Field>
+            <Field label="额外年度奖金（元/年）" hint="不重复计入薪资月数已包含的奖金；浮动条件请记录到备注。"><input name="bonus" type="number" min="0" step="0.1" defaultValue={editing === "new" ? "" : editing.bonus ?? ""} /></Field>
+            <Field label="签字费（元，一次性）"><input name="signingBonus" type="number" min="0" step="0.1" defaultValue={editing === "new" ? "" : editing.signingBonus ?? ""} /></Field>
+            <Field label="其他现金（元/年）"><input name="otherCompensation" type="number" min="0" step="0.1" defaultValue={editing === "new" ? "" : editing.otherCompensation ?? ""} /></Field>
             <Field label="接受截止日期"><input name="deadline" type="date" defaultValue={editing === "new" ? "" : editing.deadline} /></Field>
             {scoreFields.map(([key, label]) => <Field label={`${label}（1–5）`} key={key}><select name={key} defaultValue={editing === "new" ? 3 : editing[key]}>{[1, 2, 3, 4, 5].map((value) => <option value={value} key={value}>{value}</option>)}</select></Field>)}
             <Field label="决策状态"><select name="decisionStatus" defaultValue={editing === "new" ? "考虑中" : editing.decisionStatus}>{decisions.map((value) => <option key={value}>{value}</option>)}</select></Field>

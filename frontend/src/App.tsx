@@ -16,6 +16,7 @@ import ToolsPage from "./pages/ToolsPage";
 import SettingsPage from "./pages/SettingsPage";
 import ProfilePage from "./pages/ProfileV2Page";
 import OffersPage from "./pages/OffersPage";
+import IncomePage from "./pages/IncomePage";
 import "./update-notice.css";
 
 export type DataState = {
@@ -74,6 +75,7 @@ export const navigation = [
   ["tasks", "行动清单", ListTodo],
   ["interviews", "面试管理", MessageSquareText],
   ["offers", "Offer 对比", BadgeDollarSign],
+  ["income", "收入计算", BadgeDollarSign],
   ["resumes", "简历汇总", FileText],
   ["profile", "个人资料库", UserRound],
   ["ai", "岗位准备", Sparkles],
@@ -165,7 +167,8 @@ export default function App() {
     const configuredOrder = data.settings?.config.navigationOrder || navigation.map(([key]) => key);
     const hidden = new Set(data.settings?.config.hiddenNavigation || []);
     const byKey = new Map<string, (typeof navigation)[number]>(navigation.map((item) => [item[0], item]));
-    return configuredOrder
+    const order = configuredOrder.includes("income") ? configuredOrder : [...configuredOrder, "income"];
+    return order
       .map((key) => byKey.get(key))
       .filter((item): item is (typeof navigation)[number] => Boolean(item) && !hidden.has(item![0]));
   }, [data.settings?.config.hiddenNavigation, data.settings?.config.navigationOrder]);
@@ -178,6 +181,7 @@ export default function App() {
     case "tasks": content = <TasksPage {...pageProps} />; break;
     case "interviews": content = <InterviewsPage {...pageProps} />; break;
     case "offers": content = <OffersPage {...pageProps} />; break;
+    case "income": content = <IncomePage key={data.offers.map(o => o.id).join(",")} {...pageProps} />; break;
     case "resumes": content = <ResumesPage {...pageProps} />; break;
     case "profile": content = <ProfilePage {...pageProps} />; break;
     case "ai": content = <AIPage {...pageProps} />; break;

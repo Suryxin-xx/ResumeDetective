@@ -222,3 +222,56 @@ body.offers-modal-open .offers-modal-actions {
     backdrop-filter: none;
   }
 }
+
+.offer-tax { border: 1px solid var(--border, #dde3ec); border-radius: 14px; padding: 16px; background: var(--surface-solid, #fff); }
+.offer-tax-toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.offer-tax-toggle input { width: 18px; height: 18px; flex: 0 0 auto; }
+.offer-tax-toggle span { display: grid; gap: 4px; }
+.offer-tax-toggle small, .offer-tax-help { color: var(--text-secondary, #596579); font-size: 12px; line-height: 1.65; }
+.offer-tax-inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 14px 0; }
+.offer-tax summary { cursor: pointer; padding: 10px 0; font-weight: 600; font-size: 13px; }
+.offer-tax-results { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; }
+.offer-tax-results > div { display: grid; gap: 7px; padding: 16px; border-radius: 12px; background: #eef6ff; color: #184e80; }
+.offer-tax-results span { font-size: 12px; }
+.offer-tax-results strong { font-size: 23px; font-variant-numeric: tabular-nums; }
+.offer-tax-error { color: #ab341e; padding: 10px; background: #fff3eb; border-radius: 8px; }
+.offer-tax-table { overflow-x: auto; }
+.offer-tax-table table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.offer-tax-table th, .offer-tax-table td { padding: 9px; text-align: right; white-space: nowrap; border-bottom: 1px solid #e5e9ef; }
+@media (max-width: 620px) { .offer-tax-inputs, .offer-tax-results { grid-template-columns: 1fr; } }
+.income-page { display: grid; gap: 20px; }
+.income-plan-toolbar { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(220px, 1fr); gap: 16px; align-items: end; }
+.income-plan-actions { display: flex; flex-wrap: wrap; gap: 10px; grid-column: 1 / -1; }
+.income-save-status { color: var(--muted, #64748b); margin: 14px 0 0; line-height: 1.6; }
+.income-tax-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.income-tax-choice { display: grid; gap: 12px; text-align: left; padding: 20px; border: 1px solid var(--border, #dce4ed); border-radius: 14px; color: inherit; background: var(--surface, #fff); cursor: pointer; }
+.income-tax-choice.selected { border: 2px solid var(--accent, #2563eb); padding: 19px; }
+.income-tax-choice > span { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.income-tax-choice b { font-size: 12px; color: var(--accent, #2563eb); }
+.income-tax-choice strong { font-size: 21px; }
+.income-tax-choice small { line-height: 1.6; }
+.income-recommendation { padding: 14px 0 0; line-height: 1.7; }
+.income-deductions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 20px 0; }
+.income-deductions > div { display: grid; gap: 10px; padding: 18px; border: 1px solid var(--border, #dce4ed); border-radius: 12px; }
+.income-deductions strong { font-size: 22px; }
+.income-results .income-result-primary { border-color: var(--accent, #2563eb); }
+.income-results em { font-size: 14px; font-style: normal; font-weight: 400; }
+.income-fund { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 22px; border: 1px solid var(--border, #dce4ed); border-radius: 14px; }
+.income-fund h3, .income-fund p { margin: 0; }
+.income-fund > div { display: grid; gap: 10px; }
+.income-fund strong { font-size: 25px; }
+.income-fund small { font-size: 14px; font-weight: 400; }
+.income-fund > p { grid-column: 1 / -1; color: var(--muted, #64748b); line-height: 1.6; }
+.income-months { margin: 22px 0; }
+.income-sources { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; }
+.income-page details summary { cursor: pointer; padding: 8px 0; }
+@media(max-width: 900px) { .income-tax-choices, .income-fund, .income-plan-toolbar { grid-template-columns: 1fr; } .income-deductions { grid-template-columns: 1fr; } }
+.income-page > .panel { padding: 0 20px 20px; }
+.income-page > .panel > .panel-heading { margin: 0 -20px 20px; }
+.income-input-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin: 20px 0; }
+.income-results { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.income-results article { display: grid; gap: 10px; padding: 22px; border: 1px solid var(--border, #dce4ed); border-radius: 14px; background: var(--surface, #fff); }
+.income-results strong { font-size: 28px; color: var(--accent, #2563eb); }
+.income-results small { color: var(--muted, #64748b); line-height: 1.6; }
+@media (max-width: 1100px) { .income-input-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .income-input-grid, .income-results { grid-template-columns: 1fr; } }

@@ -51,7 +51,7 @@ type Config struct {
 }
 
 var defaultNavigation = []string{
-	"overview", "applications", "targets", "tasks", "interviews", "offers",
+	"overview", "applications", "targets", "tasks", "interviews", "offers", "income",
 	"resumes", "profile", "ai", "tools", "settings",
 }
 

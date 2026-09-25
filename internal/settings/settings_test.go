@@ -7,6 +7,13 @@ import (
 )
 
 func TestNormalizeThemeAndNavigation(t *testing.T) {
+	income := Defaults()
+	income.HiddenNavigation = []string{"income"}
+	income.NavigationOrder = []string{"income", "overview"}
+	income.normalize()
+	if income.NavigationOrder[0] != "income" || len(income.HiddenNavigation) != 1 || income.HiddenNavigation[0] != "income" {
+		t.Fatal("income navigation was not retained")
+	}
 	cfg := Defaults()
 	cfg.Theme = "soft"
 	cfg.NavigationOrder = []string{"settings", "applications", "applications", "unknown"}
