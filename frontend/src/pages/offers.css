@@ -240,6 +240,28 @@ body.offers-modal-open .offers-modal-actions {
 .offer-tax-table th, .offer-tax-table td { padding: 9px; text-align: right; white-space: nowrap; border-bottom: 1px solid #e5e9ef; }
 @media (max-width: 620px) { .offer-tax-inputs, .offer-tax-results { grid-template-columns: 1fr; } }
 .income-page { display: grid; gap: 20px; }
+.income-conditions-fields { border: 0; margin: 0; padding: 0; min-width: 0; }
+.offer-conditions-section { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; min-width: 0; background: var(--surface-solid); }
+.offer-conditions-section > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.offer-conditions-section > summary small { margin-left: 8px; color: var(--muted); font-weight: 400; }
+.offer-comparison-toolbar { display: flex; justify-content: space-between; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 18px; color: var(--muted); font-size: 13px; }
+.offer-comparison-toolbar label { display: flex; align-items: center; gap: 8px; }
+.offer-comparison-toolbar select { width: auto; min-width: 150px; }
+.offers-page .offer-table { min-width: 1060px; }
+.offers-page .offer-table td { vertical-align: top; }
+.offers-page .offer-table td small { display: block; margin-top: 6px; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.offers-page .offer-table .offer-net > strong { display: block; font-size: 17px; color: var(--accent); }
+.offers-page .offer-table td .estimate-confirmed { color: #23764e; }
+.offers-page .offer-table td .estimate-default { color: #936422; }
+.offer-row-actions { display: grid; gap: 8px; justify-items: start; }
+.offer-row-actions .row-toggle { margin: 0; }
+.offers-page .offer-comparison-detail td { position: static; background: var(--surface-muted); padding: 18px; }
+.offer-comparison-detail td > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; white-space: normal; line-height: 1.7; }
+.income-linked-context { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 18px 20px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-solid); }
+.income-linked-context > div { flex: 1 1 340px; }
+.income-linked-context p { margin: 8px 0 0; color: var(--muted); line-height: 1.7; }
+.income-offer-link-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+body.offers-modal-open fieldset.modal-form-grid { border: 0; margin: 0; }
 .income-plan-toolbar { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(220px, 1fr); gap: 16px; align-items: end; }
 .income-plan-actions { display: flex; flex-wrap: wrap; gap: 10px; grid-column: 1 / -1; }
 .income-save-status { color: var(--muted, #64748b); margin: 14px 0 0; line-height: 1.6; }

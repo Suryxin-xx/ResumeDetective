@@ -26,7 +26,7 @@ func TestOfferTaxMigrationAndRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	backups, err := filepath.Glob(filepath.Join(filepath.Dir(path), "migration-backups", "before-schema12-*.db"))
+	backups, err := filepath.Glob(filepath.Join(filepath.Dir(path), "migration-backups", "before-schema13-*.db"))
 	if err != nil || len(backups) != 1 {
 		t.Fatalf("missing migration backup: %v %v", backups, err)
 	}

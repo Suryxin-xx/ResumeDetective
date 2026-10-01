@@ -52,7 +52,7 @@ func TestIncomePlansPersistAndUpgrade(t *testing.T) {
 	if len(list) != 0 {
 		t.Fatal("delete failed")
 	}
-	backups, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "migration-backups", "before-schema12-*.db"))
+	backups, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "migration-backups", "before-schema13-*.db"))
 	if len(backups) != 1 {
 		t.Fatalf("backups=%v", backups)
 	}

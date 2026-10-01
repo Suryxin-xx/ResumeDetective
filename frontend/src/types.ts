@@ -81,6 +81,7 @@ export type Interview = {
 };
 
 export type Offer = {
+  incomeSettings?: string;
   taxSettings?: string;
   id: number;
   applicationId: number;

@@ -1,6 +1,6 @@
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = "4.7.0",
+    [string]$Version = "4.7.1",
     [string]$ReleaseRoot = "",
     [switch]$ArchiveExisting
 )
@@ -63,6 +63,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Interview workflow tests failed." }
     node scripts/test_offer_tax.mjs
     if ($LASTEXITCODE -ne 0) { throw "Offer tax tests failed." }
+    node scripts/test_income_flow.mjs
+    if ($LASTEXITCODE -ne 0) { throw "Offer income workflow tests failed." }
     & $goExe test ./cmd/... ./internal/...
     if ($LASTEXITCODE -ne 0) { throw "Go tests failed." }
     & $goExe vet ./cmd/... ./internal/...
@@ -80,17 +82,24 @@ try {
     & $goExe run ./cmd/demo-data -input ".\data.example\sample-data.json" -output (Join-Path $demoDataDir "resume_detective.db")
     if ($LASTEXITCODE -ne 0) { throw "Creating the public demo database failed." }
     Copy-Item -LiteralPath ".\README.md" -Destination $payload
+    Copy-Item -LiteralPath ".\PACKAGING.md" -Destination $payload
     Copy-Item -LiteralPath ".\LICENSE" -Destination $payload
+    $releaseAssets = Join-Path $payload "assets"
+    New-Item -ItemType Directory -Path $releaseAssets | Out-Null
+    Copy-Item -LiteralPath ".\assets\app-icon-128.png" -Destination $releaseAssets
     Copy-Item -LiteralPath ".\data.example" -Destination (Join-Path $payload "data.example") -Recurse
     $releaseScreenshots = Join-Path $payload "screenshots"
     New-Item -ItemType Directory -Path $releaseScreenshots | Out-Null
     Copy-Item -Path ".\screenshots\v4-*.png" -Destination $releaseScreenshots
-    Compress-Archive -Path (Join-Path $payload "*") -DestinationPath $zipPath -CompressionLevel Optimal
-    foreach ($artifact in @($exe, $zipPath)) {
+    # Write the EXE checksum first so it is included in the downloadable ZIP.
+    foreach ($artifact in @($exe)) {
         $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $artifact
         $line = "$($hash.Hash.ToLowerInvariant())  $([System.IO.Path]::GetFileName($artifact))"
         [System.IO.File]::WriteAllText("$artifact.sha256", "$line`r`n", [System.Text.UTF8Encoding]::new($false))
     }
+    Compress-Archive -Path (Join-Path $payload "*") -DestinationPath $zipPath -CompressionLevel Optimal
+    $zipHash = Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath
+    [System.IO.File]::WriteAllText("$zipPath.sha256", "$($zipHash.Hash.ToLowerInvariant())  $([System.IO.Path]::GetFileName($zipPath))`r`n", [System.Text.UTF8Encoding]::new($false))
 }
 catch {
     if (Test-Path -LiteralPath $stagingRoot) {

@@ -33,7 +33,7 @@ import (
 	"github.com/Suryxin-xx/ResumeDetective/internal/webui"
 )
 
-var version = "4.7.0-dev"
+var version = "4.7.1"
 
 func main() {
 	var dataDir string

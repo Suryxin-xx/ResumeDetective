@@ -23,6 +23,8 @@ func TestCompareVersions(t *testing.T) {
 		ok      bool
 	}{
 		{"4.0.0", "v4.0.1", -1, true},
+		{"4.7.0", "v4.7.1", -1, true},
+		{"4.7.1", "v4.7.1", 0, true},
 		{"v4.1.0", "4.0.9", 1, true},
 		{"4.0.0", "4.0.0", 0, true},
 		{"4.0.0-dev", "4.0.1", -1, true},

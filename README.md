@@ -10,7 +10,7 @@
   [![Release](https://img.shields.io/github/v/release/Suryxin-xx/ResumeDetective?display_name=tag&sort=semver)](https://github.com/Suryxin-xx/ResumeDetective/releases)
   [![累计 Release 下载](https://img.shields.io/github/downloads/Suryxin-xx/ResumeDetective/total?label=%E7%B4%AF%E8%AE%A1%20Release%20%E4%B8%8B%E8%BD%BD&color=5b7894)](https://github.com/Suryxin-xx/ResumeDetective/releases)
   [![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-2563eb)](#下载与使用)
-  [![Go](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)](go.mod)
+  [![Go](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)](https://github.com/Suryxin-xx/ResumeDetective/blob/main/go.mod)
   [![License](https://img.shields.io/github/license/Suryxin-xx/ResumeDetective)](LICENSE)
 
   [下载最新版](https://github.com/Suryxin-xx/ResumeDetective/releases) · [功能一览](#功能一览) · [数据安全](#数据与安全) · [问题反馈](https://github.com/Suryxin-xx/ResumeDetective/issues)
@@ -19,6 +19,8 @@
 <p align="center"><img src="screenshots/v4-overview.png" alt="ResumeDetective 总览页面" width="100%"></p>
 
 > [!TIP]
+> **v4.7.1：** Offer 可保存社保、公积金比例与独立缴费基数、工时和计税方式；横向对比直接展示预计到手与公积金入账。收入计算完整带入正式条件，支持关联试算方案与确认回写；旧方案保留，数据库升级前自动备份。未保存提示、过期页面防覆盖与显式零值处理同步完善。
+>
 > **v4.7.0：** 新增独立收入计算与本地薪资方案保存，支持全年税前/到手/月均/时薪、公积金双边缴存和年终奖两种计税方式对比；收入计算可在设置中排序或隐藏。数据库增量升级至 schema v12，升级前自动生成快照，保留已有投递与 Offer。
 >
 > **v4.5.3：** 已有投递现在可以修正公司和岗位名称，并同步反映到面试、Offer、简历汇总与 Excel 镜像；手动行动任务支持修改名称、日期、优先级和备注。本次不修改数据库结构，也不会自动改名或解除已绑定简历。
@@ -45,7 +47,7 @@
 | 总览与行动 | 用核心数字、近期安排、流程脉搏、重点面试和最近变化判断推进重点；截止测评与固定面试可统一按时间查看 |
 | 意向岗位 | 先保存公司、岗位和 JD，准备好后可一键转为正式投递 |
 | 简历与复盘 | 简历按真实文件版本归并并展示关联岗位；面试把安排信息与复盘放在同一条时间线，保留问题、结果和改进项 |
-| Offer 对比 | 记录薪资结构、奖金、签字费、地点、成长、强度、稳定性与截止日期，自动估算总包并横向比较 |
+| Offer 对比 | 保存薪资与缴费条件，横向比较全年税前、预计到手、月均到手、公积金入账和税后时薪；评分为可选补充 |
 | 个人资料库 | 以折叠分组维护教育、项目、实习、校园和获奖经历，为定制简历与 AI 分析复用 |
 | 岗位准备 | 从某条投递直接带入 JD 与个人资料库，生成匹配缺口、简历修改或面试准备清单，并可转入行动清单 |
 | Excel 镜像 | 自动生成 `data/秋招投递追踪.xlsx`，无需打开软件也能快速查看与筛选 |
@@ -109,9 +111,11 @@ Get-Content .\ResumeDetective-windows-x64.zip.sha256
 
 进入 Offer 后，可在独立的“Offer 对比”页面填写薪酬与决策信息。总包估算只计算明确填写的现金项目，评分仅作为回忆和比较辅助，不替代对合同条款、福利口径与风险的人工核对。
 
-#### 收入计算与薪资方案（v4.7.0）
+#### 收入计算与薪资方案（v4.7.1）
 
-“收入计算”可从 Offer 带入薪资，也可独立试算。支持命名保存、多方案切换、修改、另存和删除，方案保存在本地数据库并随数据库备份；未保存的修改离开或刷新后重置。试算不会改写 Offer，也不会联网传输薪资。
+“收入计算”可从 Offer 完整带入薪资、个人/单位公积金比例、社保比例、独立缴费基数、工时与计税方式，也可独立试算。支持命名保存、Offer 关联、多方案切换、修改、另存和删除，方案保存在本地数据库并随数据库备份。保存试算不会改写 Offer；只有明确点击“更新此 Offer 条件”并确认才回写薪资与计算条件，不改动备注和决策状态。不会联网传输薪资。
+
+旧方案仍作为独立快照保留，可通过“仅修改方案关联”手动关联 Offer，不凭名称猜测关联关系。Offer 条件变化后，旧方案会提示使用的是旧快照，可保留试算或重新带入正式条件。未保存修改在离开或刷新前提示；未核对缴费条件的结果明确标记为默认/待核对估算。
 
 - 金额统一用人民币元；默认个人社保 10.5%（上海养老 8%＋医疗 2%＋失业 0.5%参考值），个人/单位公积金各 5%，均可修改。缴费基数默认按月薪，可自定义，不自动套用各地上下限。
 - 独立展示全年税前、到手、月均与时薪，社保/公积金/个税扣款清晰分项；公积金账户预计新增 = 个人＋单位月缴存，年度按月额 × 12，不当作到手现金或当前余额。
@@ -120,7 +124,7 @@ Get-Content .\ResumeDetective-windows-x64.zip.sha256
 
 估算按完整年度、居民个人在同一单位工作 12 个月计算；额外薪数、奖金、签字费与其他现金假设在 12 月发放。默认所有奖金并入综合所得，单独计税需自行确认资格，2027 年后的单独计税选项暂不支持。月均结果不是每月实际工资，缴费上限、税前扣除资格和实际发薪口径请向公司确认。规则依据：[累计预扣法](https://www.chinatax.gov.cn/n810341/n810760/c3959585/content.html)、[全年一次性奖金政策](https://shanghai.chinatax.gov.cn/tax/zcfw/rdwd/202501/t474844.html)。
 
-本版本增量新增 `offers.tax_settings` 与独立的 `income_plans` 表（schema v12），不改写旧投递或 Offer 金额；升级前在数据库旁的 `migration-backups` 自动保存数据库快照，失败则停止升级。升级后的数据库不应直接交给旧版程序打开；回退需使用升级前备份。上海默认比例参考[官方说明](https://www.shanghai.gov.cn/nw17239/20251211/6a00e933de0347acbc172518d6bbab79.html)，不是所有城市、年份或用工类型的通用政策。
+v4.7.1 增量新增 `offers.income_settings`、薪资方案的 Offer 关联和来源时间戳（schema v13）；历史 `tax_settings` 和旧方案原样保留，不改写旧投递或 Offer 金额。升级前在数据库旁的 `migration-backups` 自动保存数据库快照，失败则停止升级。升级后的数据库不应直接交给旧版程序打开；回退需使用升级前备份。上海默认比例参考[官方说明](https://www.shanghai.gov.cn/nw17239/20251211/6a00e933de0347acbc172518d6bbab79.html)，不是所有城市、年份或用工类型的通用政策。未填实际条件时，个人社保默认 10.5%，个人/单位公积金各 5%；比例为 0 时保留明确的 0，不用默认值覆盖。
 
 ## 数据与安全
 
@@ -212,7 +216,7 @@ go run ./cmd/resumedetective --data-dir .\local-artifacts\dev-data --no-browser
 ### Windows 正式构建
 
 ```powershell
-.\scripts\atuo.bat -Version 4.7.0
+.\scripts\atuo.bat -Version 4.7.1
 ```
 
 构建入口依次执行仓库安全扫描、React/TypeScript 构建、Go 测试、`go vet`、Windows GUI EXE 构建、版本资源写入、虚构演示库生成、ZIP 压缩和 SHA-256 生成。

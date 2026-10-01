@@ -1,6 +1,6 @@
 package store
 
-const SchemaVersion = 12
+const SchemaVersion = 13
 
 const schemaV6 = `
 CREATE TABLE IF NOT EXISTS resumes (

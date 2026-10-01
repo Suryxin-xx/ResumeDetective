@@ -5,7 +5,10 @@ import { ConfirmButton, EmptyState, Field, Modal, PageHeader, Panel } from "../c
 import type { PageProps } from "../App";
 import type { Application, Offer } from "../types";
 import "./offers.css";
-import { estimateOffer, readTaxSettings } from "../offerTax";
+import { estimateOffer } from "../offerTax";
+import { emptyIncome, fromOffer, incomeConditions, incomeSummary } from "../incomePlans";
+import IncomeConditionsFields from "../IncomeConditionsFields";
+import { useUnsavedChanges } from "../navigationGuard";
 
 const scoreFields = [
   ["growthScore", "成长空间"], ["interestScore", "业务兴趣"], ["locationScore", "地点满意"],
@@ -40,8 +43,8 @@ const recurringTotal = (offer: Offer) => total(offer) - numericValue(offer.signi
 const scoreValue = (value: number | undefined | null) => Math.min(5, Math.max(1, numericValue(value) || 3));
 const score = (offer: Offer) => Math.round(((scoreValue(offer.growthScore) + scoreValue(offer.interestScore) + scoreValue(offer.locationScore) + scoreValue(offer.stabilityScore) + (6 - scoreValue(offer.workIntensity))) / 25) * 100);
 const money = (value: number | null | undefined) => {
-  if (!value || !Number.isFinite(value)) return "待填写";
-  return `¥${value.toLocaleString("zh-CN", { maximumFractionDigits: 1 })}`;
+  if (value == null || !Number.isFinite(value)) return "待填写";
+  return `¥${value.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}`;
 };
 const isTerminalApplication = (application: Pick<Application, "currentStatus">) => terminalApplicationStatuses.has(application.currentStatus.trim());
 const candidateRank = (application: Candidate) => candidateStagePriority[application.currentStatus] ?? (isTerminalApplication(application) ? 1000 : 500);
@@ -61,6 +64,11 @@ export default function OffersPage({ data, refresh, go }: PageProps) {
   const [includeTerminated, setIncludeTerminated] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [conditions, setConditions] = useState(emptyIncome);
+  const [dirty, setDirty] = useState(false);
+  const [sortBy, setSortBy] = useState("gross");
+  const [expanded, setExpanded] = useState<number | null>(null);
+  useUnsavedChanges(dirty, saving || deleting);
   const today = todayISO();
 
   // The global shell has a desktop minimum width. This page opts into a compact
@@ -84,12 +92,19 @@ export default function OffersPage({ data, refresh, go }: PageProps) {
     setCandidateSearch("");
     setIncludeTerminated(false);
     setDeleting(false);
+    setConditions(fromOffer(editing && editing !== "new" ? editing : undefined));
+    setDirty(false);
   }, [editing]);
 
   const existingOfferIds = useMemo(() => new Set(data.offers.map((offer) => offer.applicationId)), [data.offers]);
-  const sorted = useMemo(() => [...data.offers].sort((a, b) => Number(isOfferInvalid(a)) - Number(isOfferInvalid(b)) || total(b) - total(a)), [data.offers]);
+  const estimates = useMemo(() => new Map(data.offers.map(offer => { const p = fromOffer(offer); return [offer.id, { p, ...incomeSummary(p) }]; })), [data.offers]);
+  const sorted = useMemo(() => [...data.offers].sort((a, b) => {
+    const metric = (offer: Offer) => { const e = estimates.get(offer.id)!; if (sortBy === "net") return e.result.error ? -1 : e.result.net; if (sortBy === "fund") return e.fund.error ? -1 : e.fund.monthly; if (sortBy === "hourly") return e.hourly ?? -1; return total(offer); };
+    return Number(isOfferInvalid(a)) - Number(isOfferInvalid(b)) || metric(b) - metric(a);
+  }), [data.offers, estimates, sortBy]);
   const validOffers = useMemo(() => data.offers.filter((offer) => !isOfferInvalid(offer)), [data.offers]);
-  const highestValidTotal = validOffers.length ? Math.max(...validOffers.map(total)) : null;
+  const confirmedNets = validOffers.flatMap(offer => { const e = estimates.get(offer.id)!; return e.p.confirmed && !e.result.error ? [e.result.net] : []; });
+  const highestValidTotal = confirmedNets.length ? Math.max(...confirmedNets) : null;
   const nearestDeadline = useMemo(() => data.offers
     .filter((offer) => offer.deadline && offer.deadline >= today && pendingDecisionStatuses.has(offer.decisionStatus))
     .map((offer) => offer.deadline)
@@ -136,7 +151,7 @@ export default function OffersPage({ data, refresh, go }: PageProps) {
   }, [candidateSearch, candidates, editingApplicationId]);
 
   const closeEditor = () => {
-    if (!saving && !deleting) setEditing(null);
+    if (!saving && !deleting && (!dirty || window.confirm("Offer 有未保存的修改，确定放弃吗？"))) { setDirty(false); setEditing(null); }
   };
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
@@ -155,17 +170,20 @@ export default function OffersPage({ data, refresh, go }: PageProps) {
       return;
     }
 
-    const payload: Record<string, string | number> = { ...values, applicationId };
+    const payload: Record<string, string | number | boolean> = { ...values, applicationId, createOnly: editing === "new" };
     numericFields.forEach((key) => {
       const raw = values[key]?.trim() ?? "";
       payload[key] = raw === "" ? 0 : Number(raw);
     });
     // Preserve historical calculator settings when editing Offer facts.
     payload.taxSettings = editing && editing !== "new" ? editing.taxSettings || "" : "";
+    payload.incomeSettings = JSON.stringify(incomeConditions(conditions));
+    payload.expectedUpdatedAt = editing && editing !== "new" ? editing.updatedAt : "";
 
     setSaving(true);
     try {
       await api("/offers", { method: "PUT", ...jsonBody(payload) });
+      setDirty(false);
       setEditing(null);
       await refresh();
     } catch (reason) {
@@ -202,39 +220,43 @@ export default function OffersPage({ data, refresh, go }: PageProps) {
 
       <section className="offer-summary-grid" aria-label="Offer 概览">
         <article><BadgeDollarSign /><span>已记录 Offer</span><strong>{data.offers.length}</strong></article>
-        <article><TrendingUp /><span>最高首年现金估算 · 有效 Offer</span><strong title="含一次性签字费；仅统计未拒绝、未过期的 Offer">{highestValidTotal === null ? "暂无有效 Offer" : money(highestValidTotal)}</strong></article>
+        <article><TrendingUp /><span>最高完整年度到手 · 已核对条件</span><strong title="含一次性现金；仅统计缴费条件已核对且未拒绝、未过期的 Offer">{highestValidTotal === null ? "请先核对缴费条件" : money(highestValidTotal)}</strong></article>
         <article><CalendarClock /><span>最近决策截止 · 有效 Offer</span><strong>{nearestDeadline || "无近期截止"}</strong></article>
       </section>
 
-      <Panel title="横向比较" description="首年现金含一次性签字费；常规年估算不含签字费。奖金和其他现金均按所填金额估算，不代表保证收入；薪资月数已包含的奖金请勿重复填写。">
+      <Panel title="横向比较" description="统一按完整工作 12 个月估算，含一次性现金；月均含奖金摊平，不是每月工资条。公积金入账不算到手现金。奖金请勿重复填写。">
+        <div className="offer-comparison-toolbar"><span>默认／待核对结果仅作参考，不代表公司承诺。</span><label>排序 <select aria-label="Offer 排序" value={sortBy} onChange={e => setSortBy(e.target.value)}><option value="gross">全年税前</option><option value="net">预计全年到手</option><option value="fund">公积金月入账</option><option value="hourly">税后时薪</option></select></label></div>
         {sorted.length ? <div className="offer-table-wrap" role="region" aria-label="Offer 横向比较表" tabIndex={0}>
-          <table className="offer-table"><thead><tr><th>公司 / 岗位</th><th>现金估算</th><th>月薪结构</th><th>综合参考</th><th>决策状态</th><th>截止日期</th><th /> </tr></thead>
-            <tbody>{sorted.map((offer) => {
+          <table className="offer-table"><thead><tr><th>公司 / 岗位</th><th>税前薪资</th><th>预计全年到手</th><th>月均到手</th><th>公积金入账</th><th>决策 / 截止</th><th>操作</th></tr></thead>
+            {sorted.map((offer) => {
               const invalid = isOfferInvalid(offer);
-              return <tr key={offer.id} className={invalid ? "offer-row-inactive" : undefined}>
-                <td><strong>{offer.companyName}</strong><small>{offer.positionName}{offer.department ? ` · ${offer.department}` : ""}</small></td>
-                <td className="offer-total"><small>首年税前</small><span>{money(total(offer))}</span><small>常规年税前 {money(recurringTotal(offer))}</small>{(() => { const settings = readTaxSettings(offer.taxSettings); const estimate = estimateOffer(offer, settings); return settings.enabled && <small>{estimate.error ? "到手估算参数待检查" : `预计全年到手 ${money(estimate.net)}（${settings.year}）`}</small>; })()}{invalid && <small>不计入概览</small>}</td>
-                <td>{offer.monthlySalary === undefined || offer.monthlySalary === null ? "未填写" : `${money(offer.monthlySalary)} × ${offer.salaryMonths || "未填写"}`}</td>
-                <td><span className="offer-score">{score(offer)}</span></td>
-                <td><span className={`decision-badge decision-${offer.decisionStatus}`}>{offer.decisionStatus || "未设置"}</span></td>
-                <td>{offer.deadline || "未填写"}</td>
-                <td><button className="row-toggle" onClick={() => setEditing(offer)}><Pencil size={14} />编辑</button><button className="row-toggle" onClick={() => go(`income?offer=${offer.id}`)}>收入计算</button></td>
-              </tr>;
-            })}</tbody>
+              const e = estimates.get(offer.id)!;
+              const ordinary = estimateOffer({ ...e.p.salary, salaryMonths: 12, bonus: 0, signingBonus: 0, otherCompensation: 0 }, { ...e.tax, separateBonus: 0 });
+              const recurring = estimateOffer({ ...e.p.salary, signingBonus: 0 }, e.tax);
+              return <tbody key={offer.id}><tr className={invalid ? "offer-row-inactive" : undefined}>
+                <td><strong>{offer.companyName}</strong><small>{offer.positionName}</small><small>{offer.location || "地点待填写"}</small></td>
+                <td className="offer-total"><span>{money(offer.monthlySalary)} × {offer.salaryMonths}</span><small>全年税前 {money(total(offer))}</small></td>
+                <td className="offer-net"><strong>{e.result.error ? "待补充条件" : money(e.result.net)}</strong><small className={e.p.confirmed ? "estimate-confirmed" : "estimate-default"}>{e.p.confirmed ? "缴费条件已核对" : "默认／待核对估算"}</small><small>{e.tax.year} · {e.p.method === "separate" && e.p.bonusEligible ? "奖金单独计税" : "并入综合所得"}</small></td>
+                <td><strong>{e.result.error ? "—" : money(e.result.average)}</strong><small>含奖金摊平</small><small>基本工资月均 {ordinary.error ? "—" : money(ordinary.average)}</small></td>
+                <td><strong>{e.fund.error ? "待检查" : `${money(e.fund.monthly)}/月`}</strong><small>个人 {e.p.tax.fundRate}% / 单位 {e.p.employerFundRate}%</small></td>
+                <td><span className={`decision-badge decision-${offer.decisionStatus}`}>{offer.decisionStatus || "未设置"}</span><small>{offer.deadline || "无截止日期"}</small>{invalid && <small>不计入概览</small>}</td>
+                <td><div className="offer-row-actions"><button className="row-toggle" onClick={() => setEditing(offer)}><Pencil size={14} />编辑</button><button className="row-toggle" onClick={() => go(`income?offer=${offer.id}`)}>收入计算</button><button className="text-button" aria-expanded={expanded === offer.id} onClick={() => setExpanded(expanded === offer.id ? null : offer.id)}>更多详情</button></div></td>
+              </tr>{expanded === offer.id && <tr className="offer-comparison-detail"><td colSpan={7}><div><span>税后时薪：{e.hourly == null ? "工时待补充" : `${money(e.hourly)}/小时`}</span><span>常规年度到手（不含签字费）：{recurring.error ? "—" : money(recurring.net)}</span><span>常规年度税前：{money(recurringTotal(offer))}</span><span>综合参考评分：{score(offer)}</span><span>{e.result.error || `社保基数 ${money(e.tax.socialBase)} / 公积金基数 ${money(e.tax.fundBase)}`}</span><span>{offer.notes || "暂无补充说明"}</span></div></td></tr>}</tbody>;
+            })}
           </table>
         </div> : <EmptyState title="还没有 Offer 详情" description="收到口头或正式 Offer 后即可关联投递记录。新增时默认隐藏终止岗位，并且不会覆盖已有 Offer。" action={canAddOffer ? <button className="secondary-button" onClick={() => setEditing("new")}>添加第一份 Offer</button> : undefined} />}
       </Panel>
 
       {editing && <Modal title={editing === "new" ? "添加 Offer 详情" : "编辑 Offer 详情"} subtitle="金额均为税前人民币；不确定的项目可以留空。" onClose={closeEditor} wide>
-        <form className="offers-modal-form" onSubmit={save}>
-          <div className="modal-form-grid">
+        <form className="offers-modal-form" onSubmit={save} onChange={event => { setDirty(true); const values = new FormData(event.currentTarget); setConditions(p => ({ ...p, salary: { monthlySalary: Number(values.get("monthlySalary")), salaryMonths: Number(values.get("salaryMonths")) || 12, bonus: Number(values.get("bonus")), signingBonus: Number(values.get("signingBonus")), otherCompensation: Number(values.get("otherCompensation")) } })); }}>
+          <fieldset className="modal-form-grid" disabled={saving || deleting}>
             <div className="field field-span offer-application-field">
               <span>对应岗位</span>
               <div className="offer-application-tools">
                 <input aria-label="搜索岗位" value={candidateSearch} onChange={(event) => setCandidateSearch(event.target.value)} placeholder="搜索公司、岗位或阶段" autoComplete="off" />
                 {hiddenTerminalCandidates.length > 0 && <label className="offer-terminal-toggle"><input type="checkbox" checked={includeTerminated} onChange={(event) => setIncludeTerminated(event.target.checked)} />显示终止岗位（{hiddenTerminalCandidates.length}）</label>}
               </div>
-              {editing === "new" ? <select name="applicationId" required defaultValue="" disabled={!editorHasCandidates}>
+              {editing === "new" ? <select name="applicationId" required defaultValue="" disabled={!editorHasCandidates || saving} onChange={event => { const candidate = candidates.find(c => c.id === Number(event.target.value)); const location = event.currentTarget.form?.elements.namedItem("location") as HTMLInputElement | null; if (location && !location.value && candidate?.city) location.value = candidate.city; }}>
                 <option value="" disabled>{editorHasCandidates ? "选择对应投递" : "没有符合条件的岗位"}</option>
                 {visibleCandidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidateLabel(candidate)}</option>)}
               </select> : <>
@@ -243,20 +265,21 @@ export default function OffersPage({ data, refresh, go }: PageProps) {
                 </select>
                 <input type="hidden" name="applicationId" value={editorOffer?.applicationId ?? ""} />
               </>}
-              <small id="offer-application-help">{editing === "new" ? "优先显示 Offer、业务面试和 HR 面阶段；已有 Offer 的岗位不会出现在新增列表。" : "为避免 API Upsert 误生成重复记录，编辑时保持当前关联岗位不变。"}</small>
+              <small id="offer-application-help">{editing === "new" ? "优先显示 Offer、业务面试和 HR 面阶段；已有 Offer 的岗位不会出现在新增列表。" : "此 Offer 关联当前岗位；薪资、福利和决策信息均可修改。"}</small>
             </div>
             <Field label="部门 / 业务"><input name="department" defaultValue={editing === "new" ? "" : editing.department} /></Field>
             <Field label="工作地点"><input name="location" defaultValue={editing === "new" ? "" : editing.location} /></Field>
-            <Field label="税前月薪（元/月）" hint="例如 15000 表示 1.5 万元/月"><input name="monthlySalary" type="number" min="0" step="0.1" defaultValue={editing === "new" ? "" : editing.monthlySalary ?? ""} /></Field>
+            <Field label="税前月薪（元/月）" hint="例如 15000 表示 1.5 万元/月"><input name="monthlySalary" type="number" min="0" step="0.01" defaultValue={editing === "new" ? "" : editing.monthlySalary ?? ""} /></Field>
             <Field label="薪资月数" hint="留空按 12 薪；额外薪数不要再重复填入年度奖金。"><input name="salaryMonths" type="number" min="1" step="0.5" defaultValue={editing === "new" ? 12 : editing.salaryMonths ?? ""} /></Field>
-            <Field label="额外年度奖金（元/年）" hint="不重复计入薪资月数已包含的奖金；浮动条件请记录到备注。"><input name="bonus" type="number" min="0" step="0.1" defaultValue={editing === "new" ? "" : editing.bonus ?? ""} /></Field>
-            <Field label="签字费（元，一次性）"><input name="signingBonus" type="number" min="0" step="0.1" defaultValue={editing === "new" ? "" : editing.signingBonus ?? ""} /></Field>
-            <Field label="其他现金（元/年）"><input name="otherCompensation" type="number" min="0" step="0.1" defaultValue={editing === "new" ? "" : editing.otherCompensation ?? ""} /></Field>
+            <Field label="额外年度奖金（元/年）" hint="不重复计入薪资月数已包含的奖金；浮动条件请记录到备注。"><input name="bonus" type="number" min="0" step="0.01" defaultValue={editing === "new" ? "" : editing.bonus ?? ""} /></Field>
+            <Field label="签字费（元，一次性）"><input name="signingBonus" type="number" min="0" step="0.01" defaultValue={editing === "new" ? "" : editing.signingBonus ?? ""} /></Field>
+            <Field label="其他现金（元/年）" hint="仅填写按工资计税的现金；股权、报销等请另记备注"><input name="otherCompensation" type="number" min="0" step="0.01" defaultValue={editing === "new" ? "" : editing.otherCompensation ?? ""} /></Field>
             <Field label="接受截止日期"><input name="deadline" type="date" defaultValue={editing === "new" ? "" : editing.deadline} /></Field>
-            {scoreFields.map(([key, label]) => <Field label={`${label}（1–5）`} key={key}><select name={key} defaultValue={editing === "new" ? 3 : editing[key]}>{[1, 2, 3, 4, 5].map((value) => <option value={value} key={value}>{value}</option>)}</select></Field>)}
+            <details className="field-span offer-conditions-section"><summary>社保、公积金与工作条件 <small>{conditions.confirmed ? "已核对" : "默认／待核对"}</small></summary><IncomeConditionsFields value={conditions} disabled={saving || deleting} bonusControls onChange={value => { setConditions(value); setDirty(true); }} /></details>
+            <details className="field-span offer-conditions-section"><summary>主观评分（可选）</summary><div className="income-input-grid">{scoreFields.map(([key, label]) => <Field label={`${label}（1–5）`} key={key}><select name={key} defaultValue={editing === "new" ? 3 : editing[key]}>{[1, 2, 3, 4, 5].map((value) => <option value={value} key={value}>{value}</option>)}</select></Field>)}</div></details>
             <Field label="决策状态"><select name="decisionStatus" defaultValue={editing === "new" ? "考虑中" : editing.decisionStatus}>{decisions.map((value) => <option key={value}>{value}</option>)}</select></Field>
             <Field label="风险、福利与补充信息" span><textarea name="notes" rows={5} defaultValue={editing === "new" ? "" : editing.notes} /></Field>
-          </div>
+          </fieldset>
           <div className="modal-actions offers-modal-actions">
             {editing !== "new" && <ConfirmButton confirmText="删除这份 Offer 详情？对应投递不会删除。" onConfirm={() => deleteOffer(editing)}>{deleting ? "删除中…" : <><Trash2 size={14} />删除详情</>}</ConfirmButton>}
             <span className="action-spacer" /><button type="button" className="secondary-button" onClick={closeEditor} disabled={saving || deleting}>取消</button><button className="primary-button" disabled={saving || deleting || !editorHasCandidates}>{saving ? "保存中…" : "保存详情"}</button>

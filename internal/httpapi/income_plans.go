@@ -13,6 +13,25 @@ func (s *Server) listIncomePlans(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, items)
 }
+func (s *Server) updateOfferIncome(w http.ResponseWriter, r *http.Request) {
+	id, err := store.ParseID(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var in struct {
+		Parameters        store.IncomeParameters `json:"parameters"`
+		ExpectedUpdatedAt string                 `json:"expectedUpdatedAt"`
+	}
+	if decodeJSON(w, r, &in) != nil {
+		return
+	}
+	if err = s.store.UpdateOfferIncome(r.Context(), id, in.Parameters, in.ExpectedUpdatedAt); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
 func (s *Server) saveIncomePlan(w http.ResponseWriter, r *http.Request) {
 	var in store.IncomePlan
 	if decodeJSON(w, r, &in) != nil {

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { canNavigate } from "./navigationGuard";
 import {
   BriefcaseBusiness, Building2, CalendarCheck2, FileText, LayoutDashboard, ListTodo,
   MessageSquareText, Settings, Sparkles, Target, Wrench, Plus, PanelLeftClose, PanelLeftOpen, UserRound, BadgeDollarSign, ExternalLink, X,
@@ -90,6 +91,8 @@ function routeFromHash() {
 
 export default function App() {
   const [page, setPage] = useState(routeFromHash);
+  const [routeHash, setRouteHash] = useState(window.location.hash);
+  const lastHash = useRef(window.location.hash);
   const [sidebarCompact, setSidebarCompact] = useState(false);
   const [newApplicationSignal, setNewApplicationSignal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -150,15 +153,25 @@ export default function App() {
     };
   }, [data.settings?.config.checkUpdatesOnStart, data.system?.version]);
   useEffect(() => {
-    const onHash = () => setPage(routeFromHash());
+    const onHash = () => {
+      if (window.location.hash !== lastHash.current && !canNavigate()) { window.history.replaceState(null, "", lastHash.current || "#/overview"); return; }
+      lastHash.current = window.location.hash;
+      setRouteHash(window.location.hash);
+      setPage(routeFromHash());
+    };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
   const go = useCallback((next: string) => {
+    if (`#/${next}` === lastHash.current) return true;
+    if (!canNavigate()) return false;
+    lastHash.current = `#/${next}`;
     window.location.hash = `/${next}`;
+    setRouteHash(`#/${next}`);
     setPage(next.split("?")[0]);
     window.scrollTo({ top: 0, behavior: "instant" });
+    return true;
   }, []);
 
   const today = useMemo(() => new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" }).format(new Date()), []);
@@ -181,7 +194,7 @@ export default function App() {
     case "tasks": content = <TasksPage {...pageProps} />; break;
     case "interviews": content = <InterviewsPage {...pageProps} />; break;
     case "offers": content = <OffersPage {...pageProps} />; break;
-    case "income": content = <IncomePage key={data.offers.map(o => o.id).join(",")} {...pageProps} />; break;
+    case "income": content = <IncomePage key={routeHash} {...pageProps} />; break;
     case "resumes": content = <ResumesPage {...pageProps} />; break;
     case "profile": content = <ProfilePage {...pageProps} />; break;
     case "ai": content = <AIPage {...pageProps} />; break;
@@ -218,7 +231,7 @@ export default function App() {
       <main className="main-area">
         <div className="topbar">
           <div className="today"><CalendarCheck2 size={16} /><span>{today}</span></div>
-          <button className="primary-button compact-button" onClick={() => { go("applications"); setNewApplicationSignal((value) => value + 1); }}><Plus size={17} />新建投递</button>
+          <button className="primary-button compact-button" onClick={() => { if (go("applications")) setNewApplicationSignal((value) => value + 1); }}><Plus size={17} />新建投递</button>
         </div>
         {updateInfo?.available && !updateDismissed && <section className="update-notice" role="status" aria-label="发现新版本">
           <div className="update-notice-copy"><strong>发现新版本 {updateInfo.latest}</strong><span>当前版本 {updateInfo.current || "未知"}，可查看更新说明。</span></div>

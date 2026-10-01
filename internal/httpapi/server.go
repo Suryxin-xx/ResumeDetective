@@ -115,6 +115,7 @@ func NewWithOptions(st *store.Store, web fs.FS, paths config.Paths, v3Dir string
 	mux.HandleFunc("PUT /api/income-plans", s.saveIncomePlan)
 	mux.HandleFunc("DELETE /api/income-plans/{id}", s.deleteIncomePlan)
 	mux.HandleFunc("PUT /api/offers", s.upsertOffer)
+	mux.HandleFunc("PATCH /api/offers/{id}/income", s.updateOfferIncome)
 	mux.HandleFunc("DELETE /api/offers/{id}", s.deleteOffer)
 	mux.HandleFunc("/", s.static)
 	return s.securityHeaders(s.localOnly(mux))
