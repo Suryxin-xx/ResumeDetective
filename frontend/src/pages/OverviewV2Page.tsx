@@ -1,5 +1,5 @@
 import { ArrowRight, BriefcaseBusiness, CalendarClock, CheckCircle2, Clock3, ExternalLink, MessageSquareText, TimerReset, TrendingUp, Video } from "lucide-react";
-import { api, formatDateTime } from "../api";
+import { api, formatDateTime, todayISO } from "../api";
 import { EmptyState, PageHeader, Panel, StatusBadge } from "../components";
 import { stageStateLabel } from "../applicationProgress";
 import { applicationInterviewProgress, effectiveStageState, interviewProgressLabel } from "../interviewProgress";
@@ -20,6 +20,10 @@ const stageGroups = [
 
 export default function OverviewV2Page({ data, go, refresh }: PageProps) {
   const active = data.applications.filter((item) => !terminalStatuses.has(item.currentStatus));
+  const today = todayISO();
+  const endDate = new Date(`${today}T12:00:00`); endDate.setDate(endDate.getDate() + 7);
+  const end = `${endDate.getFullYear()}-${String(endDate.getMonth()+1).padStart(2,"0")}-${String(endDate.getDate()).padStart(2,"0")}`;
+  const offerDeadlines = data.offers.filter(offer => offer.deadline && offer.deadline <= end && ["考虑中", "倾向接受"].includes(offer.decisionStatus)).sort((a,b) => a.deadline.localeCompare(b.deadline));
   const recent = [...data.applications].sort((a, b) => new Date(b.statusUpdateTime).getTime() - new Date(a.statusUpdateTime).getTime()).slice(0, 6);
   const interviewMap = new Map<number, Interview[]>();
   data.interviews.forEach((interview) => interviewMap.set(interview.applicationId, [...(interviewMap.get(interview.applicationId) || []), interview]));
@@ -56,7 +60,7 @@ export default function OverviewV2Page({ data, go, refresh }: PageProps) {
     {value:"已完成，等待结果",label:"等待公司结果",description:"等待是正常流程，收到通知后再更新",count:waitingCompany.length},
   ];
   return <>
-    <PageHeader title={data.settings?.config.workspaceName || "秋招工作台"} description="先看近期面试，再判断现在是你要行动，还是等待公司推进。" />
+    <PageHeader title={data.spaces?.current.name || data.settings?.config.workspaceName || "秋招工作台"} description="先看近期面试，再判断现在是你要行动，还是等待公司推进。" />
     {data.dashboard.demo && <div className="demo-banner"><div><strong>你正在查看虚构的演示工作台</strong><span>准备记录真实信息时，可以安全清除全部演示数据。</span></div><button className="secondary-button" onClick={async()=>{if(!confirm("清除发布包内置的全部演示数据？"))return;await api("/demo",{method:"DELETE"});await refresh();}}>清除演示数据</button></div>}
     <section className="overview-metrics" aria-label="投递概览">
       <button className="metric-card" onClick={()=>go("applications")}><BriefcaseBusiness/><span>全部投递</span><strong>{data.dashboard.total}</strong><small>查看全部岗位</small></button>
@@ -64,6 +68,7 @@ export default function OverviewV2Page({ data, go, refresh }: PageProps) {
       <button className="metric-card" onClick={()=>go("applications?status=面试阶段")}><MessageSquareText/><span>面试阶段</span><strong>{data.dashboard.interview}</strong><small>查看正在面试的投递</small></button>
       <button className="metric-card metric-positive" onClick={()=>go("offers")}><CheckCircle2/><span>Offer</span><strong>{data.dashboard.offers}</strong><small>进入横向对比与决策</small></button>
     </section>
+    {offerDeadlines.length > 0 && <Panel title="Offer 决策提醒" description="仅展示考虑中的近期截止或已逾期 Offer；接受、拒绝和过期记录不再提醒。"><div className="offer-deadline-list">{offerDeadlines.map(offer => <button key={offer.id} onClick={() => go("offers")}><span><strong>{offer.companyName}</strong><small>{offer.positionName}</small></span><span className={offer.deadline < today ? "deadline-overdue" : ""}>{offer.deadline < today ? "已逾期 · 请核对是否延期" : offer.deadline === today ? "今天截止" : "签约截止"} · {offer.deadline}</span><ArrowRight size={16}/></button>)}</div></Panel>}
     {(focusInterviews.length > 0 || waitingInterviews.length > 0 || passedInterviews.length > 0) && <Panel className="interview-focus-panel" title="面试日程与进展" description="确定时间的面试优先展示；尚未收到安排通知的岗位集中列出，不必提前填写时间。" action={<button className="text-button" onClick={()=>go("interviews")}>进入面试管理 <ArrowRight size={14}/></button>}>
       {scheduledInterviews.length > 0 && <div className="interview-focus-grid scheduled-interview-grid" aria-label={`已定时间的面试，共 ${scheduledInterviews.length} 个`}>{scheduledInterviews.map(({ item, interview }) => <article key={item.id}>
         <header><div><span>{Array.from(new Set([item.currentStatus, interview?.round])).filter(Boolean).join(" · ")}</span><h3>{item.companyName}</h3><p>{item.positionName}</p></div><StatusBadge value="待面试"/></header>

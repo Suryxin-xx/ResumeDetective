@@ -67,7 +67,7 @@ export default function InterviewsPage({ data, refresh }: PageProps) {
       const derived = application ? applicationInterviewProgress(application, all) : null;
       const progress = derived && !derived.interview ? { ...derived, kind: "history" as const } : derived;
       const current = progress?.interview || preferredInterview(all);
-      return { id, records: sortHistory(all), current, progress, matches: filteredRecords.filter(record => record.applicationId === id) };
+      return { id, records: sortHistory(all), current, progress, terminated: Boolean(application && terminalStatuses.has(application.currentStatus)), matches: filteredRecords.filter(record => record.applicationId === id) };
     }).sort((a, b) => {
       const rank = { scheduled: 0, unscheduled: 1, waiting: 2, "next-round": 3, history: 4 };
       const order = rank[a.progress?.kind || "history"] - rank[b.progress?.kind || "history"];
@@ -164,8 +164,8 @@ export default function InterviewsPage({ data, refresh }: PageProps) {
             const visible = resultFilter === "全部结果" && !normalizedQuery ? [group.current].filter((item): item is Interview => Boolean(item)) : group.matches;
             const past = group.records.filter(record => !visible.some(item => item.id === record.id));
             return <section className="interview-job-group" key={group.id}>
-              {visible.map(item => <InterviewCard key={item.id} item={item} refresh={refresh} onEdit={() => setEditor(item)} history={kind === "history"} {...(item.id === group.current?.id && kind === "next-round" ? nextRoundProps(item) : {})} />)}
-              {past.length > 0 && <details className="interview-round-history"><summary>查看该岗位其他 {past.length} 轮记录</summary><div className="interviews-list">{past.map(item => <InterviewCard key={item.id} item={item} refresh={refresh} onEdit={() => setEditor(item)} history />)}</div></details>}
+              {visible.map(item => <InterviewCard key={item.id} item={item} refresh={refresh} onEdit={() => setEditor(item)} history={kind === "history"} invalidSchedule={group.terminated && item.result === "待面试"} {...(item.id === group.current?.id && kind === "next-round" ? nextRoundProps(item) : {})} />)}
+              {past.length > 0 && <details className="interview-round-history"><summary>查看该岗位其他 {past.length} 轮记录</summary><div className="interviews-list">{past.map(item => <details className="interview-past-row" key={item.id}><summary><strong>{item.round}</strong><span>{item.interviewTime ? formatDateTime(item.interviewTime) : "时间未填写"}</span><span>{group.terminated && item.result === "待面试" ? "安排已失效" : interviewResultLabel(item.result)}</span></summary><InterviewCard item={item} refresh={refresh} onEdit={() => setEditor(item)} history invalidSchedule={group.terminated && item.result === "待面试"} /></details>)}</div></details>}
             </section>;
           })}</div>
         </Panel>;
@@ -201,7 +201,7 @@ function UnscheduledInterviewCard({ item, onSchedule }: { item: Application; onS
   return <article className="interview-awaiting-item"><div><StatusBadge value="待补充安排"/><span><strong>{item.companyName} · {item.positionName}</strong><small>{item.currentStatus} · 最近更新 {formatDateTime(item.statusUpdateTime)}</small></span></div><button type="button" className="primary-button" onClick={onSchedule}>补充面试安排<ArrowRight size={14}/></button></article>;
 }
 
-function InterviewCard({ item, refresh, onEdit, history = false, nextRound = "", nextRoundRecorded = false, onNextRound }: { item: Interview; refresh: () => Promise<void>; onEdit: () => void; history?: boolean; nextRound?: string; nextRoundRecorded?: boolean; onNextRound?: () => void }) {
+function InterviewCard({ item, refresh, onEdit, history = false, invalidSchedule = false, nextRound = "", nextRoundRecorded = false, onNextRound }: { item: Interview; refresh: () => Promise<void>; onEdit: () => void; history?: boolean; invalidSchedule?: boolean; nextRound?: string; nextRoundRecorded?: boolean; onNextRound?: () => void }) {
   const hasReview = Boolean(item.summary || item.questions || item.weakPoints || item.followUp);
   const scheduleNotes = item.scheduleNotes?.trim();
 
@@ -213,7 +213,7 @@ function InterviewCard({ item, refresh, onEdit, history = false, nextRound = "",
           <h3 title={`${item.companyName} · ${item.positionName}`}>{item.companyName} · {item.positionName}</h3>
           <small>{interviewStage(item.round)}</small>
         </div>
-        <div className="interview-record-result"><StatusBadge value={interviewResultLabel(item.result)} /></div>
+        <div className="interview-record-result"><StatusBadge value={invalidSchedule ? "安排已失效" : interviewResultLabel(item.result)} />{invalidSchedule && <small>岗位已终止 · 原记录仍保留</small>}</div>
       </header>
 
       <div className="interview-record-meta">
@@ -224,7 +224,7 @@ function InterviewCard({ item, refresh, onEdit, history = false, nextRound = "",
       {scheduleNotes && <p className="interview-record-schedule" title={scheduleNotes}>{scheduleNotes}</p>}
 
       <div className="interview-record-links">
-        {item.meetingLink ? <a href={item.meetingLink} target="_blank" rel="noreferrer"><ExternalLink size={14} />打开会议入口</a> : <span className="interview-record-no-link">暂未添加会议入口</span>}
+        {item.meetingLink && !invalidSchedule ? <a href={item.meetingLink} target="_blank" rel="noreferrer"><ExternalLink size={14} />打开会议入口</a> : <span className="interview-record-no-link">{invalidSchedule ? "历史安排不再作为待参加事项；可在编辑中核对原会议链接。" : "暂未添加会议入口"}</span>}
       </div>
 
       {item.summary && <p className="interview-record-summary" title={item.summary}>{item.summary}</p>}

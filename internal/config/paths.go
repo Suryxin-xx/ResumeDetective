@@ -24,6 +24,24 @@ type Paths struct {
 	ReasonixDir    string
 }
 
+// ForSpace changes only user content paths. Credentials and service settings
+// remain in the original portable data directory.
+func ForSpace(base Paths, id string) Paths {
+	if id == "default" {
+		return base
+	}
+	dir := filepath.Join(base.DataDir, "spaces", id)
+	p := base
+	p.DataDir = dir
+	p.Database = filepath.Join(dir, "resume_detective.db")
+	p.Workbook = filepath.Join(dir, "投递追踪.xlsx")
+	p.ResumesDir = filepath.Join(dir, "resumes")
+	p.AttachmentsDir = filepath.Join(dir, "attachments")
+	p.MigrationFile = filepath.Join(dir, "v3-migration.json")
+	p.BackupsDir = filepath.Join(base.BackupsDir, "spaces", id)
+	return p
+}
+
 func Resolve(dataDir string) (Paths, error) {
 	if dataDir == "" {
 		dataDir = os.Getenv(DataDirEnv)

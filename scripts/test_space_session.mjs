@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+const require = createRequire(new URL('../frontend/package.json', import.meta.url));
+const ts = require('typescript');
+const code = ts.transpileModule(readFileSync(new URL('../frontend/src/api.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
+const api = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
+const target = new EventTarget(); globalThis.window = target;
+let session = 'boot-old', spaceId = 'default', calls = 0, expires = 0, lastHeaders;
+target.addEventListener('resumedetective:space-expired', () => expires++);
+globalThis.fetch = async (url, init = {}) => {
+  calls++; lastHeaders = init.headers;
+  if (url === '/api/health') return Response.json({ session, spaceId });
+  return Response.json({ ok: true }, { headers: { 'X-ResumeDetective-Session': session } });
+};
+await api.initializeSession();
+assert.equal(api.spacePreferenceKey('query'), 'query:space:default');
+assert.equal(api.resumeURL(12), '/resume/12?session=boot-old');
+await api.api('/applications');
+assert.equal(lastHeaders.get('X-ResumeDetective-Session'), 'boot-old');
+session = 'boot-new'; spaceId = 'spring';
+await assert.rejects(api.api('/applications', { method: 'POST', body: '{}' }), /空间或服务已切换/);
+assert.equal(expires, 1);
+const before = calls;
+await assert.rejects(api.api('/applications'), /旧空间/);
+assert.equal(calls, before, 'expired pages must not send another operation');
+assert.equal(api.resumeURL(12), '/resume/12?session=boot-old', 'old links must not adopt a new boot');
+console.log('Passed space session handshake, scoped preference, stale-page freeze and resume-link assertions.');

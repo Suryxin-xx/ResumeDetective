@@ -7,6 +7,24 @@ import (
 	"time"
 )
 
+func TestArchiveFullBackupsPreservesFilesAndManualBackups(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"automatic-1.space.zip", "automatic-2.space.zip", "automatic-3.space.zip", "manual.space.zip", "legacy.db"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := archiveOldSpaceBackups(dir, 2); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"automatic-2.space.zip", "automatic-3.space.zip", "manual.space.zip", "legacy.db", "retired/automatic-1.space.zip"} {
+		b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(name)))
+		if err != nil || len(b) == 0 {
+			t.Fatalf("lost %s: %v", name, err)
+		}
+	}
+}
+
 func TestPruneAutomaticBackupsKeepsNewestAndManualFiles(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Now().Add(-time.Hour)

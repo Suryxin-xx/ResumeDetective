@@ -27,13 +27,14 @@ import (
 	"github.com/Suryxin-xx/ResumeDetective/internal/httpapi"
 	"github.com/Suryxin-xx/ResumeDetective/internal/migrate"
 	"github.com/Suryxin-xx/ResumeDetective/internal/settings"
+	"github.com/Suryxin-xx/ResumeDetective/internal/spaces"
 	"github.com/Suryxin-xx/ResumeDetective/internal/store"
 	"github.com/Suryxin-xx/ResumeDetective/internal/tray"
 	"github.com/Suryxin-xx/ResumeDetective/internal/update"
 	"github.com/Suryxin-xx/ResumeDetective/internal/webui"
 )
 
-var version = "4.7.1"
+var version = "4.8.0-dev"
 
 func main() {
 	var dataDir string
@@ -93,12 +94,18 @@ func main() {
 		return
 	}
 
-	st, err := store.Open(paths.Database)
+	spaceManager, err := spaces.Open(paths, cfg.WorkspaceName)
+	if err != nil {
+		logger.Error("加载求职空间失败", "error", err)
+		return
+	}
+	st, spacePaths, spaceID, err := spaceManager.OpenSelected()
 	if err != nil {
 		logger.Error("打开数据库失败", "error", err)
 		return
 	}
 	defer st.Close()
+	paths = spacePaths
 	if err := excelmirror.Sync(context.Background(), st, paths.Workbook); err != nil {
 		logger.Warn("启动时同步 Excel 镜像失败", "path", paths.Workbook, "error", err)
 	}
@@ -112,6 +119,13 @@ func main() {
 		logger.Error("端口无法使用", "address", addr, "error", err)
 		return
 	}
+	if err = spaceManager.Commit(spaceID); err != nil {
+		listener.Close()
+		logger.Error("确认空间失败", "error", err)
+		return
+	}
+	gate := &sync.RWMutex{}
+	session := spaces.NewID()
 
 	stopRequested := make(chan struct{})
 	var stopOnce sync.Once
@@ -123,7 +137,7 @@ func main() {
 		})
 	}
 	v3Dir := migrate.Discover("")
-	aiService := ai.New(st, manager, paths.DataDir)
+	aiService := ai.New(st, manager, filepath.Dir(paths.ConfigFile))
 	updateService := update.New(version, paths.UpdatesDir)
 	updateService.NetworkConfig = func() update.NetworkConfig {
 		network := manager.Get().UpdateNetwork
@@ -138,13 +152,18 @@ func main() {
 		AutoStart:     autostartService,
 		PickDirectory: folderpicker.Pick,
 		Restart:       func() { requestAction("restart") },
+		Spaces:        spaceManager, SpaceID: spaceID, Session: session, Gate: gate,
 	})
 	server := httpapi.NewHTTPServer(addr, handler)
 	logger.Info("ResumeDetective 已启动", "version", version, "url", url, "data", paths.DataDir)
 
 	serverContext, cancelServerContext := context.WithCancel(context.Background())
 	defer cancelServerContext()
-	go runAutoBackup(serverContext, st, paths, manager, logger)
+	backupDone := make(chan struct{})
+	go func() {
+		defer close(backupDone)
+		runSpaceAutoBackup(serverContext, st, paths, manager, spaceManager, spaceID, gate, logger)
+	}()
 	go func() {
 		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			logger.Error("服务异常停止", "error", err)
@@ -187,13 +206,94 @@ func main() {
 
 	cancelServerContext()
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	_ = server.Shutdown(ctx)
+	shutdownErr := server.Shutdown(ctx)
 	cancel()
+	<-backupDone
+	if shutdownErr != nil {
+		logger.Error("请求未能安全排空，取消自动重启", "error", shutdownErr)
+		return
+	}
+	if err = st.Close(); err != nil {
+		logger.Error("关闭数据库失败，取消自动重启", "error", err)
+		return
+	}
 	if finalAction == "restart" {
 		if err := relaunch(); err != nil {
 			logger.Error("重启失败", "error", err)
 		}
 	}
+}
+
+func runSpaceAutoBackup(ctx context.Context, st *store.Store, p config.Paths, settingsManager *settings.Manager, m *spaces.Manager, id string, gate *sync.RWMutex, logger *slog.Logger) {
+	check := func() {
+		cfg := settingsManager.Get()
+		if !settings.ShouldRunBackup(latestBackupTime(p.BackupsDir), cfg, time.Now()) {
+			return
+		}
+		gate.Lock()
+		defer gate.Unlock()
+		if ctx.Err() != nil {
+			return
+		}
+		var space spaces.Space
+		for _, item := range m.Snapshot().Items {
+			if item.ID == id {
+				space = item
+				break
+			}
+		}
+		name, err := spaces.Backup(ctx, st, p, space, "automatic-")
+		if err != nil {
+			logger.Warn("完整空间自动备份失败", "error", err)
+			return
+		}
+		logger.Info("完整空间自动备份完成", "file", name)
+		if err = archiveOldSpaceBackups(p.BackupsDir, cfg.BackupRetention); err != nil {
+			logger.Warn("归档旧自动备份失败", "error", err)
+		}
+	}
+	check()
+	ticker := time.NewTicker(15 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			check()
+		}
+	}
+}
+
+func archiveOldSpaceBackups(dir string, keep int) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	names := []string{}
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "automatic-") && strings.HasSuffix(e.Name(), ".space.zip") {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(names)))
+	if keep < 1 || len(names) <= keep {
+		return nil
+	}
+	archive := filepath.Join(dir, "retired")
+	if err = os.MkdirAll(archive, 0700); err != nil {
+		return err
+	}
+	for _, name := range names[keep:] {
+		dst := filepath.Join(archive, name)
+		if _, err := os.Stat(dst); !os.IsNotExist(err) {
+			return fmt.Errorf("归档目标已存在，保留原文件：%s", name)
+		}
+		if err = os.Rename(filepath.Join(dir, name), dst); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func existingInstance(baseURL string) bool {
@@ -303,7 +403,7 @@ func latestBackupTime(dir string) time.Time {
 	}
 	var latest time.Time
 	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".db" {
+		if entry.IsDir() || (filepath.Ext(entry.Name()) != ".db" && !strings.HasSuffix(entry.Name(), ".space.zip")) {
 			continue
 		}
 		if info, err := entry.Info(); err == nil && info.ModTime().After(latest) {

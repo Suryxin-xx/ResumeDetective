@@ -1,6 +1,6 @@
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = "4.7.1",
+    [string]$Version = "4.8.0",
     [string]$ReleaseRoot = "",
     [switch]$ArchiveExisting
 )
@@ -65,6 +65,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Offer tax tests failed." }
     node scripts/test_income_flow.mjs
     if ($LASTEXITCODE -ne 0) { throw "Offer income workflow tests failed." }
+    node scripts/test_space_session.mjs
+    if ($LASTEXITCODE -ne 0) { throw "Space session safety tests failed." }
     & $goExe test ./cmd/... ./internal/...
     if ($LASTEXITCODE -ne 0) { throw "Go tests failed." }
     & $goExe vet ./cmd/... ./internal/...
@@ -90,13 +92,15 @@ try {
     Copy-Item -LiteralPath ".\data.example" -Destination (Join-Path $payload "data.example") -Recurse
     $releaseScreenshots = Join-Path $payload "screenshots"
     New-Item -ItemType Directory -Path $releaseScreenshots | Out-Null
-    Copy-Item -Path ".\screenshots\v4-*.png" -Destination $releaseScreenshots
+    Get-ChildItem -LiteralPath ".\screenshots" -File | Where-Object { $_.Name -match '^v4-[\w-]+\.(png|jpg)$' } | Copy-Item -Destination $releaseScreenshots
     # Write the EXE checksum first so it is included in the downloadable ZIP.
     foreach ($artifact in @($exe)) {
         $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $artifact
         $line = "$($hash.Hash.ToLowerInvariant())  $([System.IO.Path]::GetFileName($artifact))"
         [System.IO.File]::WriteAllText("$artifact.sha256", "$line`r`n", [System.Text.UTF8Encoding]::new($false))
     }
+    node scripts/check_release_payload.mjs $payload $Version
+    if ($LASTEXITCODE -ne 0) { throw "Release payload safety check failed." }
     Compress-Archive -Path (Join-Path $payload "*") -DestinationPath $zipPath -CompressionLevel Optimal
     $zipHash = Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath
     [System.IO.File]::WriteAllText("$zipPath.sha256", "$($zipHash.Hash.ToLowerInvariant())  $([System.IO.Path]::GetFileName($zipPath))`r`n", [System.Text.UTF8Encoding]::new($false))

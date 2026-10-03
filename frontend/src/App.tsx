@@ -4,7 +4,10 @@ import {
   BriefcaseBusiness, Building2, CalendarCheck2, FileText, LayoutDashboard, ListTodo,
   MessageSquareText, Settings, Sparkles, Target, Wrench, Plus, PanelLeftClose, PanelLeftOpen, UserRound, BadgeDollarSign, ExternalLink, X,
 } from "lucide-react";
-import { api } from "./api";
+import { api, initializeSession, verifySession } from "./api";
+import SpacesPanel, { type SpacesView } from "./SpacesPanel";
+import { Modal } from "./components";
+import "./spaces.css";
 import type { Application, Dashboard, Interview, JobTarget, Material, MigrationStatus, Offer, Profile, SettingsView, SystemInfo, Task, UpdateInfo } from "./types";
 import OverviewPage from "./pages/OverviewV2Page";
 import ApplicationsPage from "./pages/ApplicationsPage";
@@ -32,6 +35,7 @@ export type DataState = {
   settings: SettingsView | null;
   migration: MigrationStatus | null;
   system: SystemInfo | null;
+  spaces?: SpacesView | null;
 };
 
 const emptyDashboard: Dashboard = { total: 0, active: 0, interview: 0, offers: 0, openTasks: 0, stageCounts: {}, demo: false };
@@ -100,15 +104,18 @@ export default function App() {
   const [data, setData] = useState<DataState>({ dashboard: emptyDashboard, applications: [], targets: [], tasks: [], interviews: [], offers: [], profile: {id:0,fullName:"",email:"",city:"",education:"",school:"",major:"",targetRole:"",summary:"",githubUrl:"",portfolioUrl:"",updatedAt:""}, materials: [], settings: null, migration: null, system: null });
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [updateDismissed, setUpdateDismissed] = useState(false);
+  const [spacesOpen, setSpacesOpen] = useState(false);
+  const [spaceExpired, setSpaceExpired] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const [dashboard, applications, targets, tasks, interviews, offers, profile, materials, settings, migration, system] = await Promise.all([
+      await initializeSession();
+      const [dashboard, applications, targets, tasks, interviews, offers, profile, materials, settings, migration, system, spaces] = await Promise.all([
         api<Dashboard>("/dashboard"), api<Application[]>("/applications"), api<JobTarget[]>("/targets"),
         api<Task[]>("/tasks"), api<Interview[]>("/interviews"), api<Offer[]>("/offers"), api<Profile>("/profile"), api<Material[]>("/materials"), api<SettingsView>("/settings"),
-        api<MigrationStatus>("/migration/status"), api<SystemInfo>("/system/info"),
+        api<MigrationStatus>("/migration/status"), api<SystemInfo>("/system/info"),api<SpacesView>("/spaces"),
       ]);
-      setData({ dashboard, applications, targets, tasks, interviews, offers, profile, materials, settings, migration, system });
+      setData({ dashboard, applications, targets, tasks, interviews, offers, profile, materials, settings, migration, system, spaces });
       setError("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "无法连接本地服务");
@@ -118,6 +125,12 @@ export default function App() {
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { const expire = () => setSpaceExpired(true); window.addEventListener("resumedetective:space-expired", expire); return () => window.removeEventListener("resumedetective:space-expired", expire); }, []);
+  useEffect(() => {
+    const check = () => { if (!spacesOpen && document.visibilityState === "visible") void verifySession(); };
+    window.addEventListener("focus", check); document.addEventListener("visibilitychange", check);
+    return () => { window.removeEventListener("focus", check); document.removeEventListener("visibilitychange", check); };
+  }, [spacesOpen]);
   useEffect(() => { document.documentElement.dataset.theme = data.settings?.config.theme || "bright"; }, [data.settings?.config.theme]);
   useEffect(() => {
     const enabled = data.settings?.config.checkUpdatesOnStart === true;
@@ -175,7 +188,7 @@ export default function App() {
   }, []);
 
   const today = useMemo(() => new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" }).format(new Date()), []);
-  const workspaceName = data.settings?.config.workspaceName || "秋招工作台";
+  const workspaceName = data.spaces?.current.name || data.settings?.config.workspaceName || "秋招工作台";
   const visibleNavigation = useMemo(() => {
     const configuredOrder = data.settings?.config.navigationOrder || navigation.map(([key]) => key);
     const hidden = new Set(data.settings?.config.hiddenNavigation || []);
@@ -231,6 +244,7 @@ export default function App() {
       <main className="main-area">
         <div className="topbar">
           <div className="today"><CalendarCheck2 size={16} /><span>{today}</span></div>
+          <button type="button" className="secondary-button space-picker" onClick={() => { if (canNavigate()) setSpacesOpen(true); }} aria-label="管理求职空间"><DatabaseSpaceIcon/><span>{workspaceName}</span><small>切换空间</small></button>
           <button className="primary-button compact-button" onClick={() => { if (go("applications")) setNewApplicationSignal((value) => value + 1); }}><Plus size={17} />新建投递</button>
         </div>
         {updateInfo?.available && !updateDismissed && <section className="update-notice" role="status" aria-label="发现新版本">
@@ -244,8 +258,11 @@ export default function App() {
         <div className="page-container">{content}</div>
         <footer className="app-footer"><span>© Suryxin-xx · ResumeDetective</span><span>本地优先 · 数据保存在 EXE 旁的 data 文件夹</span></footer>
       </main>
+      {spacesOpen && <Modal title="求职空间" subtitle="投递、附件、面试和 Offer 独立；API 与软件设置全局共用。" onClose={() => setSpacesOpen(false)} wide><SpacesPanel view={data.spaces || null} refresh={refresh}/></Modal>}
+      {spaceExpired && <div className="space-expired" role="alertdialog" aria-label="空间已切换"><div><h2>空间或服务已切换</h2><p>这个标签页保留的是旧内容，已停止所有操作，避免写入错误空间。</p><button className="primary-button" onClick={() => window.location.reload()}>刷新进入当前空间</button></div></div>}
     </div>
   );
 }
+function DatabaseSpaceIcon(){return <Building2 size={16}/>}
 
 export type PageProps = { data: DataState; refresh: () => Promise<void>; go: (page: string) => void };

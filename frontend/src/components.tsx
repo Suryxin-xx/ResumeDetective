@@ -14,9 +14,9 @@ export function PageHeader({ eyebrow, title, description, action }: { eyebrow?: 
   );
 }
 
-export function Panel({ title, description, action, children, className = "" }: PropsWithChildren<{ title?: string; description?: string; action?: ReactNode; className?: string }>) {
+export function Panel({ title, description, action, children, className = "", hidden = false }: PropsWithChildren<{ title?: string; description?: string; action?: ReactNode; className?: string; hidden?: boolean }>) {
   return (
-    <section className={`panel ${className}`}>
+    <section className={`panel ${className}`} hidden={hidden}>
       {(title || description || action) && (
         <div className="panel-heading">
           <div>{title && <h2>{title}</h2>}{description && <p>{description}</p>}</div>

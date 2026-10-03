@@ -14,6 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Suryxin-xx/ResumeDetective/internal/ai"
@@ -22,6 +23,7 @@ import (
 	"github.com/Suryxin-xx/ResumeDetective/internal/excelmirror"
 	"github.com/Suryxin-xx/ResumeDetective/internal/migrate"
 	"github.com/Suryxin-xx/ResumeDetective/internal/settings"
+	"github.com/Suryxin-xx/ResumeDetective/internal/spaces"
 	"github.com/Suryxin-xx/ResumeDetective/internal/store"
 	"github.com/Suryxin-xx/ResumeDetective/internal/update"
 )
@@ -41,6 +43,11 @@ type Server struct {
 	updater       *update.Service
 	autostart     autostart.Controller
 	pickDirectory func(context.Context) (string, error)
+	spaces        *spaces.Manager
+	spaceID       string
+	session       string
+	gate          *sync.RWMutex
+	switching     bool
 }
 
 var Version = "4.5.4-dev"
@@ -52,6 +59,10 @@ type Options struct {
 	Updater       *update.Service
 	AutoStart     autostart.Controller
 	PickDirectory func(context.Context) (string, error)
+	Spaces        *spaces.Manager
+	SpaceID       string
+	Session       string
+	Gate          *sync.RWMutex
 }
 
 func New(st *store.Store, web fs.FS, paths config.Paths, v3Dir string, shutdown func(), logger *slog.Logger) http.Handler {
@@ -60,6 +71,10 @@ func New(st *store.Store, web fs.FS, paths config.Paths, v3Dir string, shutdown 
 
 func NewWithOptions(st *store.Store, web fs.FS, paths config.Paths, v3Dir string, shutdown func(), logger *slog.Logger, options Options) http.Handler {
 	s := &Server{store: st, web: web, log: logger, resumesDir: paths.ResumesDir, backupsDir: paths.BackupsDir, paths: paths, v3Dir: v3Dir, shutdown: shutdown, restart: options.Restart, settings: options.Settings, ai: options.AI, updater: options.Updater, autostart: options.AutoStart, pickDirectory: options.PickDirectory}
+	s.spaces, s.spaceID, s.session, s.gate = options.Spaces, options.SpaceID, options.Session, options.Gate
+	if s.gate == nil {
+		s.gate = &sync.RWMutex{}
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/dashboard", s.dashboard)
@@ -73,6 +88,14 @@ func NewWithOptions(st *store.Store, web fs.FS, paths config.Paths, v3Dir string
 	mux.HandleFunc("POST /api/applications/{id}/interview-stage", s.syncApplicationInterviewStage)
 	mux.HandleFunc("GET /resume/{id}", s.viewResume)
 	mux.HandleFunc("POST /api/backups", s.createBackup)
+	mux.HandleFunc("GET /api/spaces", s.listSpaces)
+	mux.HandleFunc("POST /api/spaces", s.createSpace)
+	mux.HandleFunc("PATCH /api/spaces/{id}", s.editSpace)
+	mux.HandleFunc("POST /api/spaces/switch", s.switchSpace)
+	mux.HandleFunc("POST /api/spaces/import", s.importSpace)
+	mux.HandleFunc("POST /api/spaces/select-directory", s.selectSpaceDirectory)
+	mux.HandleFunc("GET /api/spaces/backups", s.listSpaceBackups)
+	mux.HandleFunc("GET /api/spaces/backups/{name}", s.downloadSpaceBackup)
 	mux.HandleFunc("DELETE /api/demo", s.clearDemo)
 	mux.HandleFunc("GET /api/migration/status", s.migrationStatus)
 	mux.HandleFunc("POST /api/migration/inspect", s.inspectV3)
@@ -118,11 +141,11 @@ func NewWithOptions(st *store.Store, web fs.FS, paths config.Paths, v3Dir string
 	mux.HandleFunc("PATCH /api/offers/{id}/income", s.updateOfferIncome)
 	mux.HandleFunc("DELETE /api/offers/{id}", s.deleteOffer)
 	mux.HandleFunc("/", s.static)
-	return s.securityHeaders(s.localOnly(mux))
+	return s.securityHeaders(s.localOnly(s.spaceBoundary(mux)))
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "version": Version})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "version": Version, "session": s.session, "spaceId": s.spaceID})
 }
 
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
@@ -425,6 +448,15 @@ func (s *Server) viewResume(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createBackup(w http.ResponseWriter, r *http.Request) {
+	if s.spaces != nil {
+		name, err := spaces.Backup(r.Context(), s.store, s.paths, s.activeSpace(), "manual-")
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]string{"fileName": name})
+		return
+	}
 	name := "resume-detective-" + time.Now().Format("20060102-150405") + ".db"
 	destination := filepath.Join(s.backupsDir, name)
 	if err := s.store.Backup(r.Context(), destination); err != nil {
@@ -779,6 +811,10 @@ func (s *Server) installUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createPreUpdateBackup(ctx context.Context) (string, error) {
+	if s.spaces != nil {
+		name, err := spaces.Backup(ctx, s.store, s.paths, s.activeSpace(), "pre-update-")
+		return filepath.Join(s.backupsDir, name), err
+	}
 	if strings.TrimSpace(s.backupsDir) == "" {
 		return "", errors.New("备份目录未配置")
 	}

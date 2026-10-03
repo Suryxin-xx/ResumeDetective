@@ -1,0 +1,91 @@
+/* Shared, theme-aware refinements for the v4.8 workbench. */
+input, select, textarea { font-size: 14px; line-height: 1.55; border-radius: 10px; }
+textarea { resize: vertical; }
+input[type=file] { font-size: 14px; }
+.field > span { font-size: 13px; line-height: 1.5; font-weight: 600; }
+.field > small { font-size: 12px; line-height: 1.6; }
+.primary-button, .secondary-button, .danger-button { font-size: 13px; border-radius: 10px; }
+.text-button { font-size: 13px; }
+input[type=file]::file-selector-button { font: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; background: var(--surface-muted); color: var(--ink); margin-right: 10px; cursor: pointer; }
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.modal-layer { backdrop-filter: blur(2px); }
+.modal-card { border-radius: 18px; background: var(--surface-solid); }
+.modal-heading { position: sticky; top: 0; z-index: 8; background: var(--surface-solid); padding: 20px 24px; border-bottom: 1px solid var(--line-soft); }
+.modal-heading h2, .drawer-heading h2 { font-size: 19px; }
+.modal-heading p, .drawer-heading p { font-size: 13px; line-height: 1.6; }
+.modal-actions, .application-create-actions { background: var(--surface-solid); }
+.spaces-panel { padding: 22px 24px; gap: 18px; }
+.space-current { border: 0; padding: 0; background: transparent; gap: 5px; }
+.space-current strong { font-size: 15px; }
+.space-current span, .spaces-panel p, .spaces-panel small { font-size: 12px; line-height: 1.65; }
+.space-section-nav { display: flex; gap: 4px; padding: 4px; border-radius: 11px; background: var(--surface-muted); }
+.space-section-nav button { flex: 1; min-height: 38px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
+.space-section-nav button.active { color: var(--accent-strong); background: var(--surface-solid); font-weight: 650; box-shadow: 0 1px 4px #0000000a; }
+.space-pane { display: grid; gap: 16px; }
+.space-pane[hidden], .settings-section[hidden], .danger-zone[hidden] { display: none; }
+.space-list { gap: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.space-list article { border: 0; border-radius: 0; border-bottom: 1px solid var(--line-soft); padding: 16px; }
+.space-list article:last-child { border-bottom: 0; }
+.space-list article.space-active { background: var(--accent-soft); }
+.space-list article strong { font-size: 14px; }
+.space-create { grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; }
+.space-create > h3, .space-create > p { grid-column: 1 / -1; }
+.space-create > .space-actions { align-self: end; }
+.space-backups { border: 0; padding: 0; }
+.space-backup-list > div { background: transparent; border-width: 0 0 1px; border-radius: 0; padding: 14px 0; }
+.space-import > p, .space-switch-confirm { background: var(--accent-soft); border-radius: 10px; padding: 14px 16px; }
+.space-message { font-size: 13px; overflow-wrap: anywhere; }
+.settings-layout { align-items: start; }
+.settings-index { padding: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.settings-index button { text-align: left; font-size: 14px; padding: 12px 14px; border-radius: 8px; }
+.settings-index button.active { background: var(--accent-soft); color: var(--accent-strong); font-weight: 650; }
+.settings-content { min-width: 0; }
+.settings-content > .settings-section { margin: 0; }
+.settings-section .panel-heading { padding: 22px 24px; }
+.settings-section .panel-heading h2 { font-size: 17px; }
+.settings-section .panel-heading p { font-size: 13px; line-height: 1.6; }
+.settings-savebar { position: sticky; bottom: 16px; z-index: 6; background: var(--surface-solid); border-color: var(--line); }
+.settings-savebar strong { font-size: 14px; }
+.settings-savebar span { font-size: 12px; line-height: 1.6; }
+.settings-content .spaces-panel { padding: 18px 0; border-block: 1px solid var(--line-soft); }
+.settings-content .theme-picker small, .settings-content .toggle-copy small, .settings-content .setting-row p { font-size: 12px; line-height: 1.65; }
+.settings-content .theme-picker strong, .settings-content .toggle-copy strong { font-size: 14px; }
+.application-create-form .field { gap: 7px; }
+.application-create-form textarea[name=jdText] { min-height: 118px; }
+.application-role-section, .application-process-section { padding: 24px; }
+.create-section-heading { font-size: 14px; }
+.application-read-view { padding: 0; gap: 22px; }
+.application-read-view dl { background: transparent; padding: 0 0 20px; border-radius: 0; border-bottom: 1px solid var(--line-soft); gap: 20px; }
+.application-read-view dd { font-size: 14px; }
+.application-read-view section { border-width: 0 0 1px; border-radius: 0; padding: 0 0 20px; }
+.editor-summary { background: transparent; padding: 0 0 18px; margin-bottom: 20px; border-width: 0 0 1px; border-radius: 0; }
+.editor-summary strong { font-size: 14px; }
+.editor-summary p { font-size: 12px; line-height: 1.6; }
+.editor-grid { gap: 18px 16px; }
+.application-drawer-form > .editor-grid { padding: 0; border: 0; background: transparent; }
+.editor-section-heading { grid-column: 1 / -1; font-size: 14px; margin: 10px 0 0; padding-top: 16px; border-top: 1px solid var(--line-soft); }
+.editor-section-heading:first-child { margin-top: 0; padding-top: 0; border: 0; }
+.history-block strong { font-size: 14px; line-height: 1.6; }
+.history-block small { font-size: 12px; line-height: 1.65; }
+.history-block { background: transparent; }
+.interview-awaiting-item { border-color: var(--line); background: var(--surface-muted); }
+.interview-awaiting-item .status-badge { background: var(--accent-soft); color: var(--accent-strong); }
+.interview-awaiting-item strong { font-size: 14px; }
+.interview-awaiting-item small { font-size: 12px; }
+.interview-awaiting-notice { border-color: var(--line); background: var(--surface-muted); }
+.interview-awaiting-notice h3, .interview-awaiting-role strong { color: var(--ink-strong); font-size: 14px; }
+.interview-awaiting-notice header p, .interview-awaiting-role span { color: var(--muted); font-size: 12px; }
+.interview-awaiting-stage { background: var(--accent-soft); color: var(--accent-strong); }
+.offer-deadline-list { padding: 0 18px 12px; gap: 0; }
+.offer-deadline-list > button { border-width: 0 0 1px; border-radius: 0; padding: 15px 4px; background: transparent; }
+.offer-deadline-list > button:last-child { border-bottom: 0; }
+.offer-deadline-list strong { font-size: 14px; }
+.offer-deadline-list small { font-size: 12px; }
+@media (max-width: 1000px) {
+  .settings-layout { grid-template-columns: 1fr; }
+  .settings-index { position: static; display: flex; flex-wrap: wrap; gap: 4px; }
+  .settings-index button { flex: 1 0 auto; text-align: center; }
+  .space-create { grid-template-columns: 1fr; }
+  .space-create > .space-actions { justify-content: flex-start; }
+  .settings-savebar { bottom: 8px; flex-wrap: wrap; gap: 12px; }
+}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -123,7 +124,14 @@ type Dashboard struct {
 }
 
 func Open(path string) (*Store, error) {
-	dsn := fmt.Sprintf("file:%s?_foreign_keys=on&_busy_timeout=10000&_journal_mode=WAL&_synchronous=NORMAL", path)
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	path = abs
+	// Keep #, spaces and Unicode in the filename, rather than URI fragments.
+	u := url.URL{Path: filepath.ToSlash(path)}
+	dsn := "file:" + u.EscapedPath() + "?_foreign_keys=on&_busy_timeout=10000&_journal_mode=WAL&_synchronous=NORMAL"
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, err

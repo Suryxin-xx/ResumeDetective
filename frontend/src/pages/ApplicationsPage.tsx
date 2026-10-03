@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Building2, CalendarClock, CheckSquare2, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderArchive, ImageDown, Link2, Search, Sparkles, Trash2, Video, Workflow, Zap } from "lucide-react";
-import { api, formatDateTime, jsonBody, todayISO } from "../api";
+import { ArrowRight, Building2, CalendarClock, CheckSquare2, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderArchive, ImageDown, Link2, Search, Sparkles, Trash2, Video, Workflow, Zap } from "lucide-react";
+import { api, formatDateTime, jsonBody, resumeURL, spacePreferenceKey, todayISO } from "../api";
 import { ConfirmButton, Drawer, EmptyState, Field, Modal, PageHeader, Panel, Priority, StatusBadge } from "../components";
 import { stageStateChoices, stageStateLabel } from "../applicationProgress";
 import { applicationInterviewProgress, applicationInterviewStateLabel, effectiveStageState, interviewProgressLabel, interviewResultLabel, preferredInterview } from "../interviewProgress";
 import { usePageScroll, useViewPreference } from "../viewPreferences";
+import { useUnsavedChanges } from "../navigationGuard";
 import { completedTimeLabel, matchesStageTimeFilter, stageTimeLabel, stageTimeRelative, stageTimeTone, stageTimeValue, type StageTimeFilter } from "../stageSchedule";
 import type { PageProps } from "../App";
 import type { Application, Interview } from "../types";
@@ -26,11 +27,11 @@ export default function ApplicationsPage({ data, refresh, go, newSignal, consume
   const [timeFilter, setTimeFilter] = useViewPreference<StageTimeFilter>("applications-time", "全部时间");
   const [sort, setSort] = useViewPreference("applications-sort", "updated");
   const [compact, setCompact] = useViewPreference("applications-compact", true);
-  const [savedView, setSavedView] = useState<string>(() => { try { return localStorage.getItem("applications-saved-view-v1") || ""; } catch { return ""; } });
+  const [savedView, setSavedView] = useState<string>(() => { try { return localStorage.getItem(spacePreferenceKey("applications-saved-view-v1")) || ""; } catch { return ""; } });
   usePageScroll("applications-scroll");
   function saveView() {
     const value = JSON.stringify({ query, filter, categoryFilter, stageFilter, timeFilter, sort, hideTerminal });
-    try { localStorage.setItem("applications-saved-view-v1", value); setSavedView(value); window.alert("已保存为常用筛选，下次打开仍可一键应用。"); } catch { window.alert("浏览器不允许保存偏好，请检查本地存储权限。"); }
+    try { localStorage.setItem(spacePreferenceKey("applications-saved-view-v1"), value); setSavedView(value); window.alert("已保存为本空间常用筛选，下次打开仍可一键应用。"); } catch { window.alert("浏览器不允许保存偏好，请检查本地存储权限。"); }
   }
   function applyView() {
     try {
@@ -166,7 +167,7 @@ function ApplicationRow({ item, interviews, selected, onSelect, onQuick, onDetai
     <td><button type="button" className="stage-state-trigger" onClick={onQuick} title="快速更新环节状态">{applicationInterviewStateLabel(item, interviews) || stageStateLabel(item.stageState)}</button></td>
     <td><button type="button" className={`stage-time-cell tone-${stageTimeTone(item)}`} onClick={onQuick} title={item.stageTimeNote||"设置环节时间"}><CalendarClock size={14}/><span><strong>{stageTimeRelative(item)|| (item.stageState==="已安排"?"待补充时间":"—")}</strong>{item.stageCompletedAt&&item.stageScheduledAt&&<small>原计划 {stageTimeLabel(item)}</small>}</span></button></td>
     <td>{item.appliedAt || "—"}</td><td>{formatDateTime(item.statusUpdateTime)}</td><td><Priority value={item.priority}/></td>
-    <td><div className="row-actions">{item.jobLink&&<a className="icon-button" href={item.jobLink} target="_blank" rel="noreferrer" title="打开岗位链接" aria-label="打开岗位链接"><Link2 size={14}/></a>}{item.resumePath&&<a className="icon-button" href={`/resume/${item.id}`} target="_blank" rel="noreferrer" title="直接打开简历" aria-label="直接打开简历"><FileText size={14}/></a>}<button className="row-toggle" onClick={onDetails}>查看详情</button></div></td>
+    <td><div className="row-actions">{item.jobLink&&<a className="icon-button" href={item.jobLink} target="_blank" rel="noreferrer" title="打开岗位链接" aria-label="打开岗位链接"><Link2 size={14}/></a>}{item.resumePath&&<a className="icon-button" href={resumeURL(item.id)} target="_blank" rel="noreferrer" title="直接打开简历" aria-label="直接打开简历"><FileText size={14}/></a>}<button className="row-toggle" onClick={onDetails}>查看详情</button></div></td>
   </tr>;
 }
 
@@ -225,6 +226,10 @@ function dateTimeInputValue(value:string){
 
 function ApplicationDetailDrawer({ item, interviews, resumeOptions, onClose, refresh, go }: { item: Application; interviews:Interview[]; resumeOptions:ResumeOption[]; onClose:()=>void; refresh: () => Promise<void>; go: (page: string) => void }) {
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  useUnsavedChanges(dirty, busy);
+  const close = () => { if (!busy && (!dirty || window.confirm("资料有未保存的修改，确定关闭吗？"))) onClose(); };
   const currentInterview=preferredInterview(interviews);
   const timeline=[...item.statusHistory.map((event,index)=>({key:`status-${event.time}-${index}`,time:event.time,title:event.from?`${event.from} → ${event.to}`:event.to,detail:event.note||"投递状态更新",kind:"status"})),...interviews.map(interview=>({key:`interview-${interview.id}`,time:interview.interviewTime||interview.createdAt,title:`面试记录 · ${interview.round}`,detail:[interviewResultLabel(interview.result),interview.interviewMode].filter(Boolean).join(" · "),kind:"interview"}))].sort((a,b)=>new Date(b.time).getTime()-new Date(a.time).getTime());
   async function update(event: React.FormEvent<HTMLFormElement>) {
@@ -256,21 +261,34 @@ function ApplicationDetailDrawer({ item, interviews, resumeOptions, onClose, ref
     }
     await refresh();
     setBusy(false);
+    setDirty(false); setEditing(false);
   }
-  return <Drawer title={`${item.companyName} · ${item.positionName}`} subtitle="完整资料、简历关联与流转记录" onClose={onClose}><form className="application-drawer-form" onSubmit={update}>
-        <div className="editor-summary"><div><span className="eyebrow">APPLICATION #{item.id}</span><h3>{item.companyName} · {item.positionName}</h3><p>{item.jdText ? item.jdText.slice(0, 180) : "尚未保存 JD，建议在岗位关闭前补充。"}</p></div><div className="editor-quick-actions"><button type="button" className="secondary-button" onClick={() => go(`ai?application=${item.id}`)}><Sparkles size={15} />岗位准备</button>{item.jobLink && <a className="secondary-button" href={item.jobLink} target="_blank" rel="noreferrer">岗位链接 <ExternalLink size={14} /></a>}{item.resumePath && <a className="secondary-button" href={`/resume/${item.id}`} target="_blank" rel="noreferrer">查看简历 <ExternalLink size={14} /></a>}</div></div>
+  if (!editing) return <Drawer title={`${item.companyName} · ${item.positionName}`} subtitle="投递资料与完整流转记录" onClose={close}><div className="application-read-view">
+    <div className="application-read-heading"><StatusBadge value={item.currentStatus}/><span>{applicationInterviewStateLabel(item,interviews)||stageStateLabel(item.stageState)}</span><button className="primary-button" onClick={() => setEditing(true)}>编辑资料</button></div>
+    <dl>{[["城市",item.city],["岗位类型",item.category],["投递来源",item.source],["标签",item.tags],["投递日期",item.appliedAt],["状态更新时间",formatDateTime(item.statusUpdateTime)]].map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value || "未填写"}</dd></div>)}</dl>
+    <div className="space-actions">{item.jobLink && <a className="secondary-button" href={item.jobLink} target="_blank" rel="noreferrer">打开岗位 <ExternalLink size={14}/></a>}{item.resumePath && <a className="secondary-button" href={resumeURL(item.id)} target="_blank" rel="noreferrer">查看简历 <FileText size={14}/></a>}<button className="secondary-button" onClick={() => go(`ai?application=${item.id}`)}>岗位准备</button></div>
+    {item.stageScheduledAt && <section><h4>当前环节安排</h4><p>{stageTimeLabel(item)}</p>{item.stageTimeNote && <p>{item.stageTimeNote}</p>}</section>}
+    {currentInterview && <section><h4>当前面试进展</h4><p>{currentInterview.round} · {interviewResultLabel(currentInterview.result)} · {currentInterview.interviewTime ? formatDateTime(currentInterview.interviewTime) : "时间待补充"}</p><button className="text-button" onClick={() => go(`interviews?interview=${currentInterview.id}`)}>查看安排与复盘 <ArrowRight size={14}/></button></section>}
+    <details className="application-read-jd"><summary>保存的 JD {item.jdText ? "· 点击展开原文" : "· 尚未填写"}</summary><p>{item.jdText || "编辑资料后可以保存 JD，岗位关闭后也能查阅。"}</p></details>
+    <div className="history-block"><h4>流转详情</h4>{timeline.length ? <ol>{timeline.map(event => <li key={event.key} className={event.kind === "interview" ? "interview-event" : ""}><span/><div><strong>{event.title}</strong><small>{formatDateTime(event.time)} · {event.detail}</small></div></li>)}</ol> : <p>暂无记录</p>}</div>
+  </div></Drawer>;
+  return <Drawer title={`${item.companyName} · ${item.positionName}`} subtitle="编辑资料；关闭前请保存修改" onClose={close}><form className="application-drawer-form" onSubmit={update} onChangeCapture={() => setDirty(true)}>
+        <div className="editor-summary"><div><strong>编辑投递资料</strong><p>修改后点击底部保存；关闭前会检查未保存内容。</p></div><div className="editor-quick-actions"><button type="button" className="secondary-button" onClick={() => go(`ai?application=${item.id}`)}><Sparkles size={15} />岗位准备</button>{item.jobLink && <a className="secondary-button" href={item.jobLink} target="_blank" rel="noreferrer">岗位链接 <ExternalLink size={14} /></a>}{item.resumePath && <a className="secondary-button" href={resumeURL(item.id)} target="_blank" rel="noreferrer">查看简历 <ExternalLink size={14} /></a>}</div></div>
         <div className="editor-grid">
+          <h3 className="editor-section-heading">基本资料</h3>
           <Field label="公司名称"><input name="companyName" required defaultValue={item.companyName} /></Field>
           <Field label="岗位名称"><input name="positionName" required defaultValue={item.positionName} /></Field>
+          <Field label="城市"><input name="city" defaultValue={item.city} /></Field>
+          <Field label="岗位类型"><input name="category" defaultValue={item.category} list="categories" /></Field>
+          <Field label="自定义标签"><input name="tags" defaultValue={item.tags} placeholder="供应链, 新能源, 管培" /></Field>
+          <Field label="投递来源"><input name="source" defaultValue={item.source} list="sources" /></Field>
+          <Field label="岗位链接" span><input name="jobLink" type="url" defaultValue={item.jobLink} /></Field>
+          <h3 className="editor-section-heading">投递进度</h3>
           <Field label="当前环节"><select name="currentStatus" defaultValue={item.currentStatus}>{(statuses.includes(item.currentStatus) ? statuses : [item.currentStatus, ...statuses]).map((value) => <option key={value}>{value}</option>)}</select></Field>
           <Field label="环节状态"><select name="stageState" defaultValue={item.stageState}>{stageStateChoices(item.stageState).map(choice=><option key={choice.value} value={choice.value}>{choice.label}</option>)}</select></Field>
           <Field label="优先级"><select name="priority" defaultValue={item.priority}>{[0, 1, 2, 3, 4, 5].map((value) => <option value={value} key={value}>{value ? `${value} 级` : "普通"}</option>)}</select></Field>
-          <Field label="城市"><input name="city" defaultValue={item.city} /></Field>
-          <Field label="投递来源"><input name="source" defaultValue={item.source} list="sources" /></Field>
-          <Field label="岗位类型"><input name="category" defaultValue={item.category} list="categories" /></Field>
-          <Field label="自定义标签"><input name="tags" defaultValue={item.tags} placeholder="供应链, 新能源, 管培" /></Field>
-          <Field label="岗位链接" span><input name="jobLink" type="url" defaultValue={item.jobLink} /></Field>
           <Field label="投递日期"><input name="appliedAt" type="date" defaultValue={item.appliedAt} /></Field>
+          <h3 className="editor-section-heading">简历与岗位原文</h3>
           <ResumeBindingField currentPath={item.resumePath} options={resumeOptions.filter(option=>option.applicationId!==item.id&&option.path.toLowerCase()!==item.resumePath.toLowerCase())}/>
           <Field label="JD 原文" hint="岗位关闭后仍保留，岗位准备助手也会以此为依据。" span><textarea name="jdText" rows={7} defaultValue={item.jdText} /></Field>
           <input type="hidden" name="applicationDeadline" value={item.applicationDeadline} /><input type="hidden" name="nextActionDueAt" value={item.nextActionDueAt} /><input type="hidden" name="lastFollowUpAt" value={item.lastFollowUpAt} />
@@ -289,7 +307,7 @@ function ApplicationForm({ onSubmit, onClose, busy, resumeOptions }: { onSubmit:
       <Field label="公司名称"><input name="companyName" required autoFocus placeholder="例如：华为" /></Field>
       <Field label="岗位名称"><input name="positionName" required placeholder="例如：硬件技术工程师" /></Field>
       <Field label="岗位链接" span><input name="jobLink" type="url" placeholder="https://careers.example.com/job/..." /></Field>
-      <Field label="JD 原文" hint="建议完整保存；岗位关闭后仍可复盘，也可供岗位准备助手使用。" span><textarea name="jdText" rows={10} placeholder="粘贴岗位职责、任职要求和加分项…" /></Field>
+      <Field label="JD 原文" hint="建议完整保存，岗位关闭后仍可复盘；可拖动输入框右下角展开。" span><textarea name="jdText" rows={4} placeholder="粘贴岗位职责、任职要求和加分项…" /></Field>
     </div></section>
     <aside className="application-form-aside">
       <section className="application-form-section"><header><span><Workflow size={18}/></span><div><h3>投递状态</h3><p>默认按今天已投递记录，之后可随时调整。</p></div></header><div className="application-form-grid">

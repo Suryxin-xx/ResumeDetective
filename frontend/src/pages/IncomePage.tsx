@@ -79,6 +79,13 @@ export default function IncomePage({ data, go, refresh }: PageProps) {
   const taxField = (key: keyof Omit<TaxSettings, "enabled">, label: string, hint?: string) => <Field label={label} hint={hint}><input disabled={busy} type="number" min="0" max={key.endsWith("Rate") ? 100 : undefined} step={key === "year" ? 1 : .01} value={p.tax[key]} onChange={e => changeTax({ [key]: Number(e.target.value) })} /></Field>;
   return <div className="income-page">
     <PageHeader title="收入计算" description="从 Offer 带入真实条件，另存假设方案；只有明确确认更新时才改写 Offer。" action={<button className="secondary-button" disabled={busy} onClick={() => go("offers")}>返回 Offer</button>} />
+    <section className="income-live-summary" aria-label="实时收入摘要" aria-live="polite">
+      <div><span>全年税前</span><strong>{result.error ? "条件待补充" : money(result.gross)}</strong></div>
+      <div className="income-live-primary"><span>预计全年到手</span><strong>{result.error ? "—" : money(result.net)}</strong></div>
+      <div><span>月均到手 · 含奖金摊平</span><strong>{result.error ? "—" : money(result.average)}</strong></div>
+      <div><span>公积金账户每月新增</span><strong>{fund.error ? "—" : money(fund.monthly)}</strong></div>
+      <small>随输入实时更新；按当前缴费与计税条件估算，详细扣款及月度明细见下方。</small>
+    </section>
     <Panel title="我的薪资方案" description="保存多种方案，便于重复测算；只保存在本机，不联网传输薪资。">
       <div className="income-plan-toolbar">
         <Field label="已保存方案"><select disabled={busy || loading} value={planID} onChange={e => { if (!canReplace()) return; const id = Number(e.target.value); const item = plans.find(x => x.id === id); setPlanID(id); setP(item ? normalizeIncome(structuredClone(item.parameters)) : emptyIncome()); setName(item?.name || ""); setOfferID(item?.offerId ? String(item.offerId) : ""); setSourceUpdatedAt(item?.sourceUpdatedAt || ""); setDirty(false); setMessage(""); }}><option value="0">{loading ? "读取中…" : "新建试算"}</option>{plans.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>

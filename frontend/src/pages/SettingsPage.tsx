@@ -4,49 +4,267 @@ import { api, jsonBody } from "../api";
 import { Field, PageHeader, Panel } from "../components";
 import type { PageProps } from "../App";
 import type { AppConfig, MigrationStatus, UpdateInfo, UpdateNetworkConfig } from "../types";
-
-type BalanceResult={available:boolean;balances:Array<{currency:string;totalBalance:string;grantedBalance:string;toppedUpBalance:string}>;checkedAt:string};
-const navigationLabels:Record<string,string>={overview:"总览",applications:"投递管理",targets:"意向清单",tasks:"行动清单",interviews:"面试复盘",offers:"Offer 对比",income:"收入计算",resumes:"简历汇总",profile:"个人资料库",ai:"岗位准备",tools:"配套工具",settings:"设置"};
-const protectedNavigation=new Set(["overview","applications","settings"]);
-
+import SpacesPanel from "../SpacesPanel";
+import { useUnsavedChanges } from "../navigationGuard";
+type BalanceResult = {
+    available: boolean;
+    balances: Array<{
+        currency: string;
+        totalBalance: string;
+        grantedBalance: string;
+        toppedUpBalance: string;
+    }>;
+    checkedAt: string;
+};
+const navigationLabels: Record<string, string> = { overview: "总览", applications: "投递管理", targets: "意向清单", tasks: "行动清单", interviews: "面试管理", offers: "Offer 对比", income: "收入计算", resumes: "简历汇总", profile: "个人资料库", ai: "岗位准备", tools: "配套工具", settings: "设置" };
+const protectedNavigation = new Set(["overview", "applications", "settings"]);
 function hasExplicitAppUpdateCheck(): boolean {
-  try {
-    return new URLSearchParams(window.location.hash.split("?")[1] || "").get("checkUpdate") === "app";
-  } catch {
-    return false;
-  }
+    try {
+        return new URLSearchParams(window.location.hash.split("?")[1] || "").get("checkUpdate") === "app";
+    }
+    catch {
+        return false;
+    }
 }
-
 function clearExplicitAppUpdateCheck(): void {
-  const hashPath = window.location.hash.split("?")[0] || "#/settings";
-  window.history.replaceState(window.history.state, "", `${window.location.pathname}${window.location.search}${hashPath}`);
+    const hashPath = window.location.hash.split("?")[0] || "#/settings";
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${window.location.search}${hashPath}`);
 }
-
-export default function SettingsPage({data,refresh}:PageProps){const[config,setConfig]=useState<AppConfig|null>(data.settings?.config||null);const[apiKey,setApiKey]=useState("");const[busy,setBusy]=useState(false);const[balance,setBalance]=useState<BalanceResult|null>(null);const[balanceBusy,setBalanceBusy]=useState(false);const[restarting,setRestarting]=useState(false);const[migrationSource,setMigrationSource]=useState(data.migration?.sourceDir||"");const[migrationStatus,setMigrationStatus]=useState<MigrationStatus|null>(data.migration||null);const[migrationBusy,setMigrationBusy]=useState(false);const[autoCheckToken,setAutoCheckToken]=useState(()=>hasExplicitAppUpdateCheck()?1:0);const clearAutoCheck=useCallback(()=>clearExplicitAppUpdateCheck(),[]);useEffect(()=>setConfig(data.settings?.config||null),[data.settings]);useEffect(()=>{const onHash=()=>{if(hasExplicitAppUpdateCheck())setAutoCheckToken(value=>value+1)};window.addEventListener("hashchange",onHash);return()=>window.removeEventListener("hashchange",onHash)},[]);useEffect(()=>{if(data.migration?.available){setMigrationStatus(data.migration);setMigrationSource(data.migration.sourceDir||"")}else if(!migrationSource.trim()){setMigrationStatus(data.migration||null)}},[data.migration]);useEffect(()=>{if(!config)return;const saved=data.settings?.config.theme||"bright";document.documentElement.dataset.theme=config.theme;return()=>{document.documentElement.dataset.theme=saved}},[config?.theme,data.settings?.config.theme]);if(!config)return null;
-
-const set=<K extends keyof AppConfig>(key:K,value:AppConfig[K])=>setConfig({...config,[key]:value});const setAI=<K extends keyof AppConfig["ai"]>(key:K,value:AppConfig["ai"][K])=>setConfig({...config,ai:{...config.ai,[key]:value}});
-const moveNavigation=(key:string,direction:-1|1)=>{const order=[...config.navigationOrder];const index=order.indexOf(key);const target=index+direction;if(index<0||target<0||target>=order.length)return;[order[index],order[target]]=[order[target],order[index]];set("navigationOrder",order)};
-const toggleNavigation=(key:string)=>{if(protectedNavigation.has(key))return;const hidden=new Set(config.hiddenNavigation);hidden.has(key)?hidden.delete(key):hidden.add(key);set("hiddenNavigation",Array.from(hidden))};
-async function save(){setBusy(true);try{await api("/settings",{method:"PUT",...jsonBody({config,apiKey,deleteApiKey:false})});setApiKey("");await refresh();window.alert("设置已保存。端口或启动方式的修改会在重启后生效。");}catch(reason){window.alert(reason instanceof Error?reason.message:"保存失败");}finally{setBusy(false)}}
-async function testAI(){try{const result=await api<{message:string}>("/ai/test",{method:"POST",...jsonBody({})});window.alert(result.message);}catch(reason){window.alert(reason instanceof Error?reason.message:"连接失败");}}
-async function queryBalance(){setBalanceBusy(true);try{setBalance(await api<BalanceResult>("/ai/balance"));}catch(reason){window.alert(reason instanceof Error?reason.message:"余额查询失败");}finally{setBalanceBusy(false)}}
-async function restartService(){if(!confirm("现在重启 ResumeDetective？服务会短暂离线，页面将在恢复后自动刷新。"))return;setRestarting(true);try{await api("/system/restart",{method:"POST",...jsonBody({})});await new Promise(resolve=>setTimeout(resolve,700));for(let attempt=0;attempt<40;attempt++){try{const response=await fetch("/api/health",{cache:"no-store"});if(response.ok){window.location.reload();return}}catch{/* Wait for the relaunched local service. */}await new Promise(resolve=>setTimeout(resolve,500))}throw new Error("服务尚未恢复，请从托盘菜单或 EXE 重新打开。") }catch(reason){window.alert(reason instanceof Error?reason.message:"重启失败");setRestarting(false)}}
-async function inspectV3(){const sourceDir=migrationSource.trim();if(!sourceDir){window.alert("请先选择或填写包含 data.db 的 Python v3 数据目录。");return}setMigrationBusy(true);try{const result=await api<MigrationStatus>("/migration/inspect",{method:"POST",...jsonBody({sourceDir})});setMigrationStatus(result);if(result.available)setMigrationSource(result.sourceDir||sourceDir);else window.alert(result.reason);}catch(reason){window.alert(reason instanceof Error?reason.message:"检查目录失败");}finally{setMigrationBusy(false)}}
-async function selectV3(){setMigrationBusy(true);try{const result=await api<MigrationStatus&{canceled?:boolean}>("/migration/select",{method:"POST",...jsonBody({})});if(result.canceled)return;setMigrationStatus(result);if(result.sourceDir)setMigrationSource(result.sourceDir);if(!result.available)window.alert(result.reason);}catch(reason){window.alert(reason instanceof Error?reason.message:"选择目录失败");}finally{setMigrationBusy(false)}}
-async function clearDemoForMigration(){if(!window.confirm("清除发布包内置的演示数据？只会删除带演示标记的记录。"))return;setMigrationBusy(true);try{await api("/demo",{method:"DELETE"});await refresh();window.alert("演示数据已清除，现在可以导入 Python v3 数据。");}catch(reason){window.alert(reason instanceof Error?reason.message:"清除演示数据失败");}finally{setMigrationBusy(false)}}
-async function importV3(){const sourceDir=migrationStatus?.sourceDir||migrationSource.trim();if(!migrationStatus?.available||!sourceDir){window.alert("请先选择并检查 Python v3 数据目录。");return}if(!window.confirm(`从 ${sourceDir} 复制 ${migrationStatus.applications} 条投递？导入前会自动备份，源数据保持不变。`))return;setMigrationBusy(true);try{await api("/migration/import",{method:"POST",...jsonBody({sourceDir})});await refresh();window.alert("Python 版数据库、简历与附件已复制完成，原目录保持不变。");}catch(reason){window.alert(reason instanceof Error?reason.message:"导入失败");}finally{setMigrationBusy(false)}}
-return <><PageHeader eyebrow="SETTINGS" title="设置" description="端口、数据、备份、AI 与更新集中管理。" action={<div className="service-action-group"><button className="secondary-button" disabled={restarting} onClick={()=>void restartService()}>{restarting?<LoaderCircle className="spin" size={16}/>:<RotateCw size={16}/>} {restarting?"正在重连…":"重启服务"}</button><button className="primary-button" disabled={busy||restarting} onClick={()=>void save()}><Save size={16}/>{busy?"保存中…":"保存设置"}</button></div>}/>
- <div className="settings-layout"><nav className="settings-index">{[["general","通用"],["appearance","外观与侧栏"],["data","数据与备份"],["ai-settings","AI Provider"],["updates","更新"],["about","关于"]].map(([id,label])=><button type="button" key={id} onClick={()=>document.getElementById(id)?.scrollIntoView({behavior:"smooth",block:"start"})}>{label}</button>)}</nav><div className="settings-content">
- <Panel title="通用" description="启动、端口与简历命名集中设置；修改后记得保存。" className="settings-section"><div id="general" className="general-settings"><div className="startup-setting"><span className="setting-icon"><Power/></span><Toggle label="开机自动启动（托盘后台）" description="登录 Windows 后静默运行，任务栏托盘会显示图标；不会弹出黑色命令窗口。" checked={config.startAtLogin} onChange={v=>set("startAtLogin",v)}/></div><div className="settings-form general-fields"><Field label="工作台名称"><input value={config.workspaceName} onChange={e=>set("workspaceName",e.target.value)}/></Field><Field label="网关端口" hint="固定为 1024–65535，修改后需重启。"><input type="number" min={1024} max={65535} value={config.port} onChange={e=>set("port",Number(e.target.value))}/></Field><Toggle label="启动后打开网页" description="手动双击 EXE 时自动打开工作台。" checked={config.openBrowserOnStart} onChange={v=>set("openBrowserOnStart",v)}/><Toggle label="启动时检查更新" description="只读取公开 Release 信息，不发送个人数据。" checked={config.checkUpdatesOnStart} onChange={v=>set("checkUpdatesOnStart",v)}/></div><div className="resume-naming-setting"><span className="setting-icon"><FilePenLine/></span><div><strong>简历自动命名</strong><p>支持 <code>{'{company}'}</code>、<code>{'{position}'}</code>、<code>{'{category}'}</code>、<code>{'{date}'}</code>；旧文件仅在简历汇总页主动整理时更名。</p><input aria-label="简历命名规则" value={config.resumeNameTemplate} onChange={e=>set("resumeNameTemplate",e.target.value)} placeholder="{company}-{position}"/></div><Toggle label="新上传时自动命名" description="关闭后保留上传文件的原始名称。" checked={config.autoRenameResumes} onChange={v=>set("autoRenameResumes",v)}/></div></div></Panel>
- <Panel title="外观与侧栏" description="主题会即时预览；侧栏顺序与显隐在保存后同步。" className="settings-section"><div id="appearance" className="appearance-settings"><div className="theme-picker">{([['bright','清透蓝白','冷白背景、靛蓝强调，适合日常使用'],['paper','纸张暖白','柔和米白、较低刺激，适合长时间整理'],['dark','深色专注','低照度深色界面，适合夜间使用']] as const).map(([value,title,description])=><button type="button" key={value} className={config.theme===value?'active':''} onClick={()=>set('theme',value)}><span className={`theme-swatch theme-${value}`}><Palette size={18}/></span><strong>{title}</strong><small>{description}</small></button>)}</div><div className="navigation-editor"><div><strong>侧边栏项目</strong><p>总览、投递管理和设置始终保留，避免把自己锁在页面之外。</p></div>{config.navigationOrder.map((key,index)=>{const hidden=config.hiddenNavigation.includes(key);return <div className={`navigation-row ${hidden?'is-hidden':''}`} key={key}><span>{hidden?<EyeOff size={16}/>:<Eye size={16}/>}<strong>{navigationLabels[key]||key}</strong></span><div><button type="button" className="icon-button" disabled={index===0} onClick={()=>moveNavigation(key,-1)} title="上移"><ArrowUp size={15}/></button><button type="button" className="icon-button" disabled={index===config.navigationOrder.length-1} onClick={()=>moveNavigation(key,1)} title="下移"><ArrowDown size={15}/></button><button type="button" className="secondary-button" disabled={protectedNavigation.has(key)} onClick={()=>toggleNavigation(key)}>{hidden?'显示':'隐藏'}</button></div></div>})}</div></div></Panel>
-<Panel title="数据与备份" description="便携数据位于 EXE 旁，不写入 C 盘应用目录。" className="settings-section"><div id="data" className="settings-stack"><SettingRow icon={<FolderLock/>} title="当前数据目录" description={data.settings?.dataDir||""}><span className="secure-badge"><ShieldCheck size={14}/>Git 已隔离</span></SettingRow><SettingRow icon={<DatabaseBackup/>} title="立即创建一致性备份" description="使用 SQLite 快照，不直接复制正在写入的数据库。"><button className="secondary-button" onClick={async()=>{try{const r=await api<{fileName:string}>("/backups",{method:"POST",...jsonBody({})});window.alert(`已创建：${r.fileName}`);}catch(reason){window.alert(reason instanceof Error?reason.message:"备份失败");}}}>立即备份</button></SettingRow><div className="settings-inline"><Toggle label="自动备份" description="应用运行时按间隔检查。" checked={config.autoBackupEnabled} onChange={v=>set("autoBackupEnabled",v)}/><Field label="间隔（小时）"><input type="number" min={1} max={2160} value={config.autoBackupHours} onChange={e=>set("autoBackupHours",Number(e.target.value))}/></Field><Field label="保留数量"><input type="number" min={1} max={365} value={config.backupRetention} onChange={e=>set("backupRetention",Number(e.target.value))}/></Field></div><div className="migration-card"><div className="migration-title"><span className="setting-icon"><RefreshCw/></span><div><strong>从 Python v3 迁移</strong><p>选择旧版包含 <code>data.db</code> 的数据目录；也可以粘贴目录或 data.db 文件路径。</p></div></div><div className="migration-path"><input aria-label="Python v3 数据目录" value={migrationSource} onChange={e=>{setMigrationSource(e.target.value);setMigrationStatus(null)}} placeholder="例如 D:\\ResumeDetective-LocalData"/><button type="button" className="secondary-button" disabled={migrationBusy} onClick={()=>void selectV3()}><FolderOpen size={15}/>{migrationBusy?"等待选择…":"选择目录"}</button><button type="button" className="secondary-button" disabled={migrationBusy||!migrationSource.trim()} onClick={()=>void inspectV3()}>检查目录</button></div><div className={`migration-result ${migrationStatus?.available?"success":""}`}><strong>{migrationStatus?.available?`已找到 ${migrationStatus.applications} 条旧版投递`:migrationStatus?.reason||"尚未选择兼容的 Python v3 数据目录"}</strong>{migrationStatus?.sourceDir&&<span>{migrationStatus.sourceDir}</span>}</div>{data.dashboard.demo&&<p className="migration-warning">当前是发布演示库。请先清除演示数据，再执行迁移。</p>}{!data.dashboard.demo&&data.dashboard.total>0&&<p className="migration-warning">当前 v4 已有 {data.dashboard.total} 条投递。为避免覆盖或混合真实数据，迁移功能已锁定；请使用新的空白 v4 目录迁移。</p>}<div className="migration-actions">{data.dashboard.demo&&<button type="button" className="secondary-button" disabled={migrationBusy} onClick={()=>void clearDemoForMigration()}>清除演示数据</button>}<button type="button" className="primary-button" disabled={migrationBusy||!migrationStatus?.available||data.dashboard.total>0} onClick={()=>void importV3()}>{migrationBusy?"处理中…":migrationStatus?.available?`导入 ${migrationStatus.applications} 条投递`:"检查后导入"}</button></div></div></div></Panel>
-<Panel title="AI Provider" description="两种模式共用同一套求职分析界面。" className="settings-section"><div id="ai-settings" className="settings-form"><Field label="接入模式"><select value={config.ai.mode} onChange={e=>{setAI("mode",e.target.value as "direct"|"reasonix");setBalance(null)}}><option value="direct">DeepSeek API（推荐）</option><option value="reasonix">Reasonix CLI</option></select></Field><Field label="模型"><select value={config.ai.model} onChange={e=>setAI("model",e.target.value)}><option value="deepseek-v4-flash">deepseek-v4-flash</option><option value="deepseek-v4-pro">deepseek-v4-pro</option></select></Field>{config.ai.mode==="direct"?<><Field label="API 地址"><input value={config.ai.baseUrl} onChange={e=>setAI("baseUrl",e.target.value)}/></Field><Field label="DeepSeek API Key" hint={data.settings?.apiKeyConfigured?"已安全配置；留空不会覆盖。":"保存在 data/.env，不回传网页。"}><div className="password-input"><KeyRound size={16}/><input type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder={data.settings?.apiKeyConfigured?"已配置 · 输入新值可替换":"sk-…"}/></div></Field><Toggle label="思考模式" description="复杂分析更深入，但耗时和用量会增加。" checked={config.ai.thinking} onChange={v=>setAI("thinking",v)}/><div className="field-span balance-panel"><div className="balance-heading"><span><WalletCards size={19}/></span><div><strong>API 账户余额</strong><small>仅在手动点击时向 DeepSeek 查询；结果不会保存。</small></div><button className="secondary-button" type="button" disabled={balanceBusy||!data.settings?.apiKeyConfigured||Boolean(apiKey)} onClick={()=>void queryBalance()}>{balanceBusy?<LoaderCircle className="spin" size={15}/>:<RefreshCw size={15}/>} {balanceBusy?"查询中…":balance?"刷新余额":apiKey?"保存密钥后查询":"查询余额"}</button></div>{balance&&<div className="balance-results"><span className={balance.available?"balance-available":"balance-unavailable"}>{balance.available?"余额可用":"余额不足"}</span>{balance.balances.map(item=><div className="balance-amount" key={item.currency}><strong>{item.currency} {item.totalBalance}</strong><small>充值 {item.toppedUpBalance} · 赠金 {item.grantedBalance}</small></div>)}<time>更新于 {new Intl.DateTimeFormat("zh-CN",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).format(new Date(balance.checkedAt))}</time></div>}</div></>:<><Field label="reasonix.exe 路径" span hint="Reasonix 不随本程序分发，请使用官方 Release。"><input value={config.ai.reasonixPath} onChange={e=>setAI("reasonixPath",e.target.value)} placeholder="D:\\Tools\\Reasonix\\reasonix.exe"/></Field><Toggle label="检查 Reasonix 更新" description="读取 esengine/DeepSeek-Reasonix 的公开 Release。" checked={config.ai.checkReasonixUpdates} onChange={v=>setAI("checkReasonixUpdates",v)}/></>}<div className="field-span form-actions"><button className="secondary-button" type="button" onClick={()=>void testAI()}><Bot size={16}/>测试连接</button>{data.settings?.apiKeyConfigured&&config.ai.mode==="direct"&&<button className="text-button danger-text" type="button" onClick={async()=>{if(!confirm("删除本地保存的 API Key？"))return;await api("/settings",{method:"PUT",...jsonBody({config,apiKey:"",deleteApiKey:true})});setBalance(null);await refresh();}}><XCircle size={15}/>删除密钥</button>}</div></div></Panel>
-<Panel title="更新" description="发布包必须通过 SHA-256 校验后才允许替换程序。" className="settings-section"><div id="updates" className="settings-stack"><UpdateNetworkPanel network={config.updateNetwork} onChange={value=>set("updateNetwork",value)}/><SettingRow icon={<RefreshCw/>} title={`ResumeDetective ${data.system?.version||""}`} description="从 GitHub 公开 Release 检查稳定版。"><UpdateControl component="app" autoCheckToken={autoCheckToken} onAutoCheckComplete={clearAutoCheck}/></SettingRow>{config.ai.mode==="reasonix"&&<SettingRow icon={<Bot/>} title="Reasonix CLI" description="检查 esengine/DeepSeek-Reasonix 最新公开 Release。"><UpdateControl component="reasonix"/></SettingRow>}</div></Panel>
- <Panel title="关于" description="开发者与开源仓库信息。" className="settings-section"><div id="about" className="about-card"><span><UserRound size={24}/></span><div><h3>{data.system?.developer.name}</h3><p>{data.system?.developer.email}</p><a href={data.system?.developer.repository} target="_blank" rel="noreferrer"><Github size={15}/>Suryxin-xx/ResumeDetective</a></div></div></Panel>
- <div className="settings-savebar"><div><strong>设置修改后需要保存</strong><span>端口和启动方式在重启后生效，其余项目立即生效。</span></div><button className="primary-button" disabled={busy} onClick={()=>void save()}><Save size={16}/>{busy?"保存中…":"保存全部设置"}</button></div><div className="danger-zone"><div><strong>退出后台程序</strong><p>停止本机网页服务；下次双击 EXE 可重新启动。</p></div><button className="danger-button" onClick={async()=>{if(!confirm("退出 ResumeDetective？"))return;await api("/system/quit",{method:"POST",...jsonBody({})});document.body.innerHTML='<main class="stopped-page"><h1>ResumeDetective 已退出</h1><p>可以关闭此页面。</p></main>';}}>退出程序</button></div>
-</div></div></>}
-function Toggle({label,description,checked,onChange}:{label:string;description:string;checked:boolean;onChange:(v:boolean)=>void}){return <label className="toggle-row"><span><strong>{label}</strong><small>{description}</small></span><input type="checkbox" checked={checked} onChange={e=>onChange(e.target.checked)}/><i/></label>}
-function SettingRow({icon,title,description,children}:{icon:React.ReactNode;title:string;description:string;children:React.ReactNode}){return <div className="setting-row"><span className="setting-icon">{icon}</span><div><strong>{title}</strong><p>{description}</p></div><div className="setting-action">{children}</div></div>}
-function updateNetworkError(reason:unknown){if(reason instanceof TypeError&&/fetch/i.test(reason.message))return "无法连接本地服务，请确认 ResumeDetective 网关仍在运行后重试。";if(reason instanceof Error&&/404/.test(reason.message))return "当前版本暂未提供网络测试接口，请先保存设置并更新到最新版本。";return reason instanceof Error?reason.message:"网络测试失败，请检查代理设置。";}
-function UpdateNetworkPanel({network,onChange}:{network:UpdateNetworkConfig;onChange:(value:UpdateNetworkConfig)=>void}){const[busy,setBusy]=useState(false);const[result,setResult]=useState<{ok:boolean;message:string}|null>(null);async function test(){setBusy(true);setResult(null);try{const response=await api<{ok:boolean;message?:string}>("/updates/test-network",{method:"POST",...jsonBody(network)});setResult({ok:response.ok,message:response.message||(response.ok?"网络连接测试成功。":"网络连接测试失败。")});}catch(reason){setResult({ok:false,message:updateNetworkError(reason)});}finally{setBusy(false)}}return <div className="update-network-card"><div className="update-network-heading"><span className="setting-icon"><Globe2 size={18}/></span><div><strong>更新网络</strong><p>只影响更新器；修改后请保存。Clash 未写入系统配置时请选择“自定义代理”。</p></div></div><div className="update-network-fields"><Field label="连接方式"><select value={network.mode} onChange={e=>onChange({...network,mode:e.target.value as UpdateNetworkConfig["mode"]})}><option value="auto">自动：环境变量 → Windows → 直连</option><option value="system">Windows/Clash 系统代理（WinINET）</option><option value="env">HTTP_PROXY / HTTPS_PROXY</option><option value="custom">自定义本地代理端口</option><option value="off">强制直连</option></select></Field>{network.mode==="custom"&&<Field label="Clash/代理地址" hint="填写代理软件的 HTTP 或混合端口；Clash 常见示例为 http://127.0.0.1:7890"><input value={network.proxyUrl} onChange={e=>onChange({...network,proxyUrl:e.target.value})} placeholder="http://127.0.0.1:7890"/></Field>}<button type="button" className="secondary-button update-network-test" disabled={busy} onClick={()=>void test()}>{busy?<LoaderCircle className="spin" size={15}/>:<CheckCircle2 size={15}/>} {busy?"测试中…":"测试连接"}</button></div>{result&&<p className={`update-network-result ${result.ok?"success":"error"}`}>{result.message}</p>}</div>}
-function UpdateControl({component,autoCheckToken=0,onAutoCheckComplete}:{component:"app"|"reasonix";autoCheckToken?:number;onAutoCheckComplete?:()=>void}){const[info,setInfo]=useState<UpdateInfo|null>(null);const[busy,setBusy]=useState(false);const[error,setError]=useState("");const lastAutomaticCheck=useRef(0);const check=useCallback(async(silent=false)=>{setBusy(true);setError("");try{setInfo(await api<UpdateInfo>(`/updates/check?component=${component}`));}catch(reason){if(silent){console.debug("更新检查失败。",reason);}else setError(updateNetworkError(reason));}finally{setBusy(false)}},[component]);useEffect(()=>{if(autoCheckToken<=0||lastAutomaticCheck.current===autoCheckToken)return;lastAutomaticCheck.current=autoCheckToken;void check(true).finally(()=>onAutoCheckComplete?.())},[autoCheckToken,check,onAutoCheckComplete]);async function install(){if(!info?.canAutoUpdate||!confirm(`下载并安装 ${info.latest}？安装前会自动备份数据库，data 文件夹不会被替换。`))return;setBusy(true);try{const download=await api<{version:string;path:string;sha256:string;size:number}>("/updates/download",{method:"POST",...jsonBody({})});const installed=await api<{backup:string}>("/updates/install",{method:"POST",...jsonBody(download)});document.body.innerHTML='<main class="stopped-page"><h1>正在安装更新</h1><p id="update-install-status"></p>';const status=document.getElementById("update-install-status");if(status)status.textContent=`数据库已备份为 ${installed.backup}，程序校验完成后会自动重新启动。`;}catch(reason){window.alert(updateNetworkError(reason));setBusy(false)}}if(!info&&error)return <div className="update-actions"><span className="update-error" role="status">{error}</span><button className="secondary-button" disabled={busy} onClick={()=>void check()}>{busy?"检查中…":"重试"}</button></div>;if(!info)return <button className="secondary-button" disabled={busy} onClick={()=>void check()}>{busy?"检查中…":"检查更新"}</button>;if(!info.available&&component==="app")return <div className="update-actions" title={info.reason}><span className="secure-badge"><ShieldCheck size={14}/>已是最新版</span><a className="text-button" href={info.releaseUrl} target="_blank" rel="noreferrer">发布记录<ExternalLink size={13}/></a></div>;if(component==="reasonix"||!info.canAutoUpdate)return <a className="secondary-button" title={info.reason} href={info.releaseUrl} target="_blank" rel="noreferrer">{info.latest?`下载 ${info.latest}`:"打开官方发布页"}<ExternalLink size={14}/></a>;return <button className="primary-button" disabled={busy} onClick={()=>void install()}>{busy?"下载中…":`一键更新到 ${info.latest}`}</button>}
+export default function SettingsPage({ data, refresh }: PageProps) {
+    const [config, setConfig] = useState<AppConfig | null>(data.settings?.config || null);
+    const [apiKey, setApiKey] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [balance, setBalance] = useState<BalanceResult | null>(null);
+    const [balanceBusy, setBalanceBusy] = useState(false);
+    const [restarting, setRestarting] = useState(false);
+    const [migrationSource, setMigrationSource] = useState(data.migration?.sourceDir || "");
+    const [migrationStatus, setMigrationStatus] = useState<MigrationStatus | null>(data.migration || null);
+    const [migrationBusy, setMigrationBusy] = useState(false);
+    const [activeSection, setActiveSection] = useState(() => hasExplicitAppUpdateCheck() ? "updates" : "general");
+    const [autoCheckToken, setAutoCheckToken] = useState(() => hasExplicitAppUpdateCheck() ? 1 : 0);
+    const clearAutoCheck = useCallback(() => clearExplicitAppUpdateCheck(), []);
+    const dirty = Boolean(apiKey) || JSON.stringify(config) !== JSON.stringify(data.settings?.config || null);
+    useUnsavedChanges(dirty, busy || migrationBusy || restarting);
+    useEffect(() => { if (!dirty)
+        setConfig(data.settings?.config || null); }, [data.settings]);
+    useEffect(() => { const onHash = () => { if (hasExplicitAppUpdateCheck()) { setActiveSection("updates"); }
+        if (hasExplicitAppUpdateCheck())
+        setAutoCheckToken(value => value + 1); }; window.addEventListener("hashchange", onHash); return () => window.removeEventListener("hashchange", onHash); }, []);
+    useEffect(() => { if (data.migration?.available) {
+        setMigrationStatus(data.migration);
+        setMigrationSource(data.migration.sourceDir || "");
+    }
+    else if (!migrationSource.trim()) {
+        setMigrationStatus(data.migration || null);
+    } }, [data.migration]);
+    useEffect(() => { if (!config)
+        return; const saved = data.settings?.config.theme || "bright"; document.documentElement.dataset.theme = config.theme; return () => { document.documentElement.dataset.theme = saved; }; }, [config?.theme, data.settings?.config.theme]);
+    if (!config)
+        return null;
+    const set = <K extends keyof AppConfig>(key: K, value: AppConfig[K]) => setConfig({ ...config, [key]: value });
+    const setAI = <K extends keyof AppConfig["ai"]>(key: K, value: AppConfig["ai"][K]) => setConfig({ ...config, ai: { ...config.ai, [key]: value } });
+    const moveNavigation = (key: string, direction: -1 | 1) => { const order = [...config.navigationOrder]; const index = order.indexOf(key); const target = index + direction; if (index < 0 || target < 0 || target >= order.length)
+        return; [order[index], order[target]] = [order[target], order[index]]; set("navigationOrder", order); };
+    const toggleNavigation = (key: string) => { if (protectedNavigation.has(key))
+        return; const hidden = new Set(config.hiddenNavigation); hidden.has(key) ? hidden.delete(key) : hidden.add(key); set("hiddenNavigation", Array.from(hidden)); };
+    async function save() { setBusy(true); try {
+        await api("/settings", { method: "PUT", ...jsonBody({ config, apiKey, deleteApiKey: false }) });
+        setApiKey("");
+        await refresh();
+        window.alert("设置已保存。端口或启动方式的修改会在重启后生效。");
+    }
+    catch (reason) {
+        window.alert(reason instanceof Error ? reason.message : "保存失败");
+    }
+    finally {
+        setBusy(false);
+    } }
+    async function testAI() { try {
+        const result = await api<{
+            message: string;
+        }>("/ai/test", { method: "POST", ...jsonBody({}) });
+        window.alert(result.message);
+    }
+    catch (reason) {
+        window.alert(reason instanceof Error ? reason.message : "连接失败");
+    } }
+    async function queryBalance() { setBalanceBusy(true); try {
+        setBalance(await api<BalanceResult>("/ai/balance"));
+    }
+    catch (reason) {
+        window.alert(reason instanceof Error ? reason.message : "余额查询失败");
+    }
+    finally {
+        setBalanceBusy(false);
+    } }
+    async function restartService() { if (!confirm("现在重启 ResumeDetective？服务会短暂离线，页面将在恢复后自动刷新。"))
+        return; setRestarting(true); try {
+        await api("/system/restart", { method: "POST", ...jsonBody({}) });
+        await new Promise(resolve => setTimeout(resolve, 700));
+        for (let attempt = 0; attempt < 40; attempt++) {
+            try {
+                const response = await fetch("/api/health", { cache: "no-store" });
+                if (response.ok) {
+                    window.location.reload();
+                    return;
+                }
+            }
+            catch { /* Wait for the relaunched local service. */ }
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        throw new Error("服务尚未恢复，请从托盘菜单或 EXE 重新打开。");
+    }
+    catch (reason) {
+        window.alert(reason instanceof Error ? reason.message : "重启失败");
+        setRestarting(false);
+    } }
+    async function inspectV3() { const sourceDir = migrationSource.trim(); if (!sourceDir) {
+        window.alert("请先选择或填写包含 data.db 的 Python v3 数据目录。");
+        return;
+    } setMigrationBusy(true); try {
+        const result = await api<MigrationStatus>("/migration/inspect", { method: "POST", ...jsonBody({ sourceDir }) });
+        setMigrationStatus(result);
+        if (result.available)
+            setMigrationSource(result.sourceDir || sourceDir);
+        else
+            window.alert(result.reason);
+    }
+    catch (reason) {
+        window.alert(reason instanceof Error ? reason.message : "检查目录失败");
+    }
+    finally {
+        setMigrationBusy(false);
+    } }
+    async function selectV3() { setMigrationBusy(true); try {
+        const result = await api<MigrationStatus & {
+            canceled?: boolean;
+        }>("/migration/select", { method: "POST", ...jsonBody({}) });
+        if (result.canceled)
+            return;
+        setMigrationStatus(result);
+        if (result.sourceDir)
+            setMigrationSource(result.sourceDir);
+        if (!result.available)
+            window.alert(result.reason);
+    }
+    catch (reason) {
+        window.alert(reason instanceof Error ? reason.message : "选择目录失败");
+    }
+    finally {
+        setMigrationBusy(false);
+    } }
+    async function clearDemoForMigration() { if (!window.confirm("清除发布包内置的演示数据？只会删除带演示标记的记录。"))
+        return; setMigrationBusy(true); try {
+        await api("/demo", { method: "DELETE" });
+        await refresh();
+        window.alert("演示数据已清除，现在可以导入 Python v3 数据。");
+    }
+    catch (reason) {
+        window.alert(reason instanceof Error ? reason.message : "清除演示数据失败");
+    }
+    finally {
+        setMigrationBusy(false);
+    } }
+    async function importV3() { const sourceDir = migrationStatus?.sourceDir || migrationSource.trim(); if (!migrationStatus?.available || !sourceDir) {
+        window.alert("请先选择并检查 Python v3 数据目录。");
+        return;
+    } if (!window.confirm(`从 ${sourceDir} 复制 ${migrationStatus.applications} 条投递？导入前会自动备份，源数据保持不变。`))
+        return; setMigrationBusy(true); try {
+        await api("/migration/import", { method: "POST", ...jsonBody({ sourceDir }) });
+        await refresh();
+        window.alert("Python 版数据库、简历与附件已复制完成，原目录保持不变。");
+    }
+    catch (reason) {
+        window.alert(reason instanceof Error ? reason.message : "导入失败");
+    }
+    finally {
+        setMigrationBusy(false);
+    } }
+    return <><PageHeader eyebrow="SETTINGS" title="设置" description="端口、数据、备份、AI 与更新集中管理。" action={<div className="service-action-group"><button className="secondary-button" disabled={restarting} onClick={() => void restartService()}>{restarting ? <LoaderCircle className="spin" size={16}/> : <RotateCw size={16}/>} {restarting ? "正在重连…" : "重启服务"}</button><button className="primary-button" disabled={busy || restarting || !dirty} onClick={() => void save()}><Save size={16}/>{busy ? "保存中…" : "保存设置"}</button></div>}/>
+ <div className="settings-layout"><nav className="settings-index">{[["general", "通用"], ["appearance", "外观与侧栏"], ["data", "数据与备份"], ["ai-settings", "AI Provider"], ["updates", "更新"], ["about", "关于"]].map(([id, label]) => <button type="button" key={id} className={activeSection === id ? "active" : ""} aria-pressed={activeSection === id} onClick={() => setActiveSection(id)}>{label}</button>)}</nav><div className="settings-content">
+ <Panel title="通用" description="启动、端口与简历命名集中设置；修改后记得保存。" className="settings-section" hidden={activeSection !== "general"}><div id="general" className="general-settings"><div className="startup-setting"><span className="setting-icon"><Power /></span><Toggle label="开机自动启动（托盘后台）" description="登录 Windows 后静默运行，任务栏托盘会显示图标；不会弹出黑色命令窗口。" checked={config.startAtLogin} onChange={v => set("startAtLogin", v)}/></div><div className="settings-form general-fields"><Field label="当前空间名称" hint="在数据与备份或顶部切换空间中重命名。"><input readOnly value={data.spaces?.current.name || config.workspaceName}/></Field><Field label="网关端口" hint="固定为 1024–65535，修改后需重启。"><input type="number" min={1024} max={65535} value={config.port} onChange={e => set("port", Number(e.target.value))}/></Field><Toggle label="启动后打开网页" description="手动双击 EXE 时自动打开工作台。" checked={config.openBrowserOnStart} onChange={v => set("openBrowserOnStart", v)}/><Toggle label="启动时检查更新" description="只读取公开 Release 信息，不发送个人数据。" checked={config.checkUpdatesOnStart} onChange={v => set("checkUpdatesOnStart", v)}/></div><div className="resume-naming-setting"><span className="setting-icon"><FilePenLine /></span><div><strong>简历自动命名</strong><p>支持 <code>{'{company}'}</code>、<code>{'{position}'}</code>、<code>{'{category}'}</code>、<code>{'{date}'}</code>；旧文件仅在简历汇总页主动整理时更名。</p><input aria-label="简历命名规则" value={config.resumeNameTemplate} onChange={e => set("resumeNameTemplate", e.target.value)} placeholder="{company}-{position}"/></div><Toggle label="新上传时自动命名" description="关闭后保留上传文件的原始名称。" checked={config.autoRenameResumes} onChange={v => set("autoRenameResumes", v)}/></div></div></Panel>
+ <Panel title="外观与侧栏" description="主题会即时预览；侧栏顺序与显隐在保存后同步。" className="settings-section" hidden={activeSection !== "appearance"}><div id="appearance" className="appearance-settings"><div className="theme-picker">{([['bright', '清透蓝白', '冷白背景、靛蓝强调，适合日常使用'], ['paper', '纸张暖白', '柔和米白、较低刺激，适合长时间整理'], ['dark', '深色专注', '低照度深色界面，适合夜间使用']] as const).map(([value, title, description]) => <button type="button" key={value} className={config.theme === value ? 'active' : ''} onClick={() => set('theme', value)}><span className={`theme-swatch theme-${value}`}><Palette size={18}/></span><strong>{title}</strong><small>{description}</small></button>)}</div><div className="navigation-editor"><div><strong>侧边栏项目</strong><p>总览、投递管理和设置始终保留，避免把自己锁在页面之外。</p></div>{config.navigationOrder.map((key, index) => { const hidden = config.hiddenNavigation.includes(key); return <div className={`navigation-row ${hidden ? 'is-hidden' : ''}`} key={key}><span>{hidden ? <EyeOff size={16}/> : <Eye size={16}/>}<strong>{navigationLabels[key] || key}</strong></span><div><button type="button" className="icon-button" disabled={index === 0} onClick={() => moveNavigation(key, -1)} title="上移"><ArrowUp size={15}/></button><button type="button" className="icon-button" disabled={index === config.navigationOrder.length - 1} onClick={() => moveNavigation(key, 1)} title="下移"><ArrowDown size={15}/></button><button type="button" className="secondary-button" disabled={protectedNavigation.has(key)} onClick={() => toggleNavigation(key)}>{hidden ? '显示' : '隐藏'}</button></div></div>; })}</div></div></Panel>
+    <Panel title="数据与备份" description="便携数据位于 EXE 旁，不写入 C 盘应用目录。" className="settings-section" hidden={activeSection !== "data"}><div id="data" className="settings-stack"><SettingRow icon={<FolderLock />} title="当前数据目录" description={data.settings?.dataDir || ""}><span className="secure-badge"><ShieldCheck size={14}/>Git 已隔离</span></SettingRow><SpacesPanel view={data.spaces || null} refresh={refresh}/><div className="settings-inline"><Toggle label="自动备份" description="应用运行时检查当前空间；完整备份包含数据库、简历与附件。" checked={config.autoBackupEnabled} onChange={v => set("autoBackupEnabled", v)}/><Field label="间隔（小时）"><input type="number" min={1} max={2160} value={config.autoBackupHours} onChange={e => set("autoBackupHours", Number(e.target.value))}/></Field><Field label="活跃自动备份数量" hint="超出数量的自动备份移入 retired 归档，手动备份不受影响。"><input type="number" min={1} max={365} value={config.backupRetention} onChange={e => set("backupRetention", Number(e.target.value))}/></Field></div><div className="migration-card"><div className="migration-title"><span className="setting-icon"><RefreshCw /></span><div><strong>从 Python v3 迁移</strong><p>选择旧版包含 <code>data.db</code> 的数据目录；也可以粘贴目录或 data.db 文件路径。</p></div></div><div className="migration-path"><input aria-label="Python v3 数据目录" value={migrationSource} onChange={e => { setMigrationSource(e.target.value); setMigrationStatus(null); }} placeholder="例如 D:\\ResumeDetective-LocalData"/><button type="button" className="secondary-button" disabled={migrationBusy} onClick={() => void selectV3()}><FolderOpen size={15}/>{migrationBusy ? "等待选择…" : "选择目录"}</button><button type="button" className="secondary-button" disabled={migrationBusy || !migrationSource.trim()} onClick={() => void inspectV3()}>检查目录</button></div><div className={`migration-result ${migrationStatus?.available ? "success" : ""}`}><strong>{migrationStatus?.available ? `已找到 ${migrationStatus.applications} 条旧版投递` : migrationStatus?.reason || "尚未选择兼容的 Python v3 数据目录"}</strong>{migrationStatus?.sourceDir && <span>{migrationStatus.sourceDir}</span>}</div>{data.dashboard.demo && <p className="migration-warning">当前是发布演示库。请先清除演示数据，再执行迁移。</p>}{!data.dashboard.demo && data.dashboard.total > 0 && <p className="migration-warning">当前 v4 已有 {data.dashboard.total} 条投递。为避免覆盖或混合真实数据，迁移功能已锁定；请在上方创建并切换到空白空间，再迁移。</p>}<div className="migration-actions">{data.dashboard.demo && <button type="button" className="secondary-button" disabled={migrationBusy} onClick={() => void clearDemoForMigration()}>清除演示数据</button>}<button type="button" className="primary-button" disabled={migrationBusy || !migrationStatus?.available || data.dashboard.total > 0} onClick={() => void importV3()}>{migrationBusy ? "处理中…" : migrationStatus?.available ? `导入 ${migrationStatus.applications} 条投递` : "检查后导入"}</button></div></div></div></Panel>
+    <Panel title="AI Provider" description="两种模式共用同一套求职分析界面。" className="settings-section" hidden={activeSection !== "ai-settings"}><div id="ai-settings" className="settings-form"><Field label="接入模式"><select value={config.ai.mode} onChange={e => { setAI("mode", e.target.value as "direct" | "reasonix"); setBalance(null); }}><option value="direct">DeepSeek API（推荐）</option><option value="reasonix">Reasonix CLI</option></select></Field><Field label="模型"><select value={config.ai.model} onChange={e => setAI("model", e.target.value)}><option value="deepseek-v4-flash">deepseek-v4-flash</option><option value="deepseek-v4-pro">deepseek-v4-pro</option></select></Field>{config.ai.mode === "direct" ? <><Field label="API 地址"><input value={config.ai.baseUrl} onChange={e => setAI("baseUrl", e.target.value)}/></Field><Field label="DeepSeek API Key" hint={data.settings?.apiKeyConfigured ? "已安全配置；留空不会覆盖。" : "保存在 EXE 旁公共 data/.env，不随空间备份导出、不回传网页。"}><div className="password-input"><KeyRound size={16}/><input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder={data.settings?.apiKeyConfigured ? "已配置 · 输入新值可替换" : "sk-…"}/></div></Field><Toggle label="思考模式" description="复杂分析更深入，但耗时和用量会增加。" checked={config.ai.thinking} onChange={v => setAI("thinking", v)}/><div className="field-span balance-panel"><div className="balance-heading"><span><WalletCards size={19}/></span><div><strong>API 账户余额</strong><small>仅在手动点击时向 DeepSeek 查询；结果不会保存。</small></div><button className="secondary-button" type="button" disabled={balanceBusy || !data.settings?.apiKeyConfigured || Boolean(apiKey)} onClick={() => void queryBalance()}>{balanceBusy ? <LoaderCircle className="spin" size={15}/> : <RefreshCw size={15}/>} {balanceBusy ? "查询中…" : balance ? "刷新余额" : apiKey ? "保存密钥后查询" : "查询余额"}</button></div>{balance && <div className="balance-results"><span className={balance.available ? "balance-available" : "balance-unavailable"}>{balance.available ? "余额可用" : "余额不足"}</span>{balance.balances.map(item => <div className="balance-amount" key={item.currency}><strong>{item.currency} {item.totalBalance}</strong><small>充值 {item.toppedUpBalance} · 赠金 {item.grantedBalance}</small></div>)}<time>更新于 {new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date(balance.checkedAt))}</time></div>}</div></> : <><Field label="reasonix.exe 路径" span hint="Reasonix 不随本程序分发，请使用官方 Release。"><input value={config.ai.reasonixPath} onChange={e => setAI("reasonixPath", e.target.value)} placeholder="D:\\Tools\\Reasonix\\reasonix.exe"/></Field><Toggle label="检查 Reasonix 更新" description="读取 esengine/DeepSeek-Reasonix 的公开 Release。" checked={config.ai.checkReasonixUpdates} onChange={v => setAI("checkReasonixUpdates", v)}/></>}<div className="field-span form-actions"><button className="secondary-button" type="button" onClick={() => void testAI()}><Bot size={16}/>测试连接</button>{data.settings?.apiKeyConfigured && config.ai.mode === "direct" && <button className="text-button danger-text" type="button" onClick={async () => { if (!confirm("删除本地保存的 API Key？"))
+        return; await api("/settings", { method: "PUT", ...jsonBody({ config, apiKey: "", deleteApiKey: true }) }); setBalance(null); await refresh(); }}><XCircle size={15}/>删除密钥</button>}</div></div></Panel>
+    <Panel title="更新" description="发布包必须通过 SHA-256 校验后才允许替换程序。" className="settings-section" hidden={activeSection !== "updates"}><div id="updates" className="settings-stack"><UpdateNetworkPanel network={config.updateNetwork} onChange={value => set("updateNetwork", value)}/><SettingRow icon={<RefreshCw />} title={`ResumeDetective ${data.system?.version || ""}`} description="从 GitHub 公开 Release 检查稳定版。"><UpdateControl component="app" autoCheckToken={autoCheckToken} onAutoCheckComplete={clearAutoCheck}/></SettingRow>{config.ai.mode === "reasonix" && <SettingRow icon={<Bot />} title="Reasonix CLI" description="检查 esengine/DeepSeek-Reasonix 最新公开 Release。"><UpdateControl component="reasonix"/></SettingRow>}</div></Panel>
+ <Panel title="关于" description="开发者与开源仓库信息。" className="settings-section" hidden={activeSection !== "about"}><div id="about" className="about-card"><span><UserRound size={24}/></span><div><h3>{data.system?.developer.name}</h3><p>{data.system?.developer.email}</p><a href={data.system?.developer.repository} target="_blank" rel="noreferrer"><Github size={15}/>Suryxin-xx/ResumeDetective</a></div></div></Panel>
+ <div className="settings-savebar"><div><strong>{dirty ? "有未保存的修改" : "设置已同步"}</strong><span>切换分类不会丢失输入；保存后生效，端口与启动方式需重启。</span></div><button className="primary-button" disabled={busy || !dirty} onClick={() => void save()}><Save size={16}/>{busy ? "保存中…" : "保存全部设置"}</button></div><div className="danger-zone" hidden={activeSection !== "general"}><div><strong>退出后台程序</strong><p>停止本机网页服务；下次双击 EXE 可重新启动。</p></div><button className="danger-button" onClick={async () => { if (!confirm("退出 ResumeDetective？"))
+        return; await api("/system/quit", { method: "POST", ...jsonBody({}) }); document.body.innerHTML = '<main class="stopped-page"><h1>ResumeDetective 已退出</h1><p>可以关闭此页面。</p></main>'; }}>退出程序</button></div>
+    </div></div></>;
+}
+function Toggle({ label, description, checked, onChange }: {
+    label: string;
+    description: string;
+    checked: boolean;
+    onChange: (v: boolean) => void;
+}) { return <label className="toggle-row"><span><strong>{label}</strong><small>{description}</small></span><input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)}/><i /></label>; }
+function SettingRow({ icon, title, description, children }: {
+    icon: React.ReactNode;
+    title: string;
+    description: string;
+    children: React.ReactNode;
+}) { return <div className="setting-row"><span className="setting-icon">{icon}</span><div><strong>{title}</strong><p>{description}</p></div><div className="setting-action">{children}</div></div>; }
+function updateNetworkError(reason: unknown) { if (reason instanceof TypeError && /fetch/i.test(reason.message))
+    return "无法连接本地服务，请确认 ResumeDetective 网关仍在运行后重试。"; if (reason instanceof Error && /404/.test(reason.message))
+    return "当前版本暂未提供网络测试接口，请先保存设置并更新到最新版本。"; return reason instanceof Error ? reason.message : "网络测试失败，请检查代理设置。"; }
+function UpdateNetworkPanel({ network, onChange }: {
+    network: UpdateNetworkConfig;
+    onChange: (value: UpdateNetworkConfig) => void;
+}) { const [busy, setBusy] = useState(false); const [result, setResult] = useState<{
+    ok: boolean;
+    message: string;
+} | null>(null); async function test() { setBusy(true); setResult(null); try {
+    const response = await api<{
+        ok: boolean;
+        message?: string;
+    }>("/updates/test-network", { method: "POST", ...jsonBody(network) });
+    setResult({ ok: response.ok, message: response.message || (response.ok ? "网络连接测试成功。" : "网络连接测试失败。") });
+}
+catch (reason) {
+    setResult({ ok: false, message: updateNetworkError(reason) });
+}
+finally {
+    setBusy(false);
+} } return <div className="update-network-card"><div className="update-network-heading"><span className="setting-icon"><Globe2 size={18}/></span><div><strong>更新网络</strong><p>只影响更新器；修改后请保存。Clash 未写入系统配置时请选择“自定义代理”。</p></div></div><div className="update-network-fields"><Field label="连接方式"><select value={network.mode} onChange={e => onChange({ ...network, mode: e.target.value as UpdateNetworkConfig["mode"] })}><option value="auto">自动：环境变量 → Windows → 直连</option><option value="system">Windows/Clash 系统代理（WinINET）</option><option value="env">HTTP_PROXY / HTTPS_PROXY</option><option value="custom">自定义本地代理端口</option><option value="off">强制直连</option></select></Field>{network.mode === "custom" && <Field label="Clash/代理地址" hint="填写代理软件的 HTTP 或混合端口；Clash 常见示例为 http://127.0.0.1:7890"><input value={network.proxyUrl} onChange={e => onChange({ ...network, proxyUrl: e.target.value })} placeholder="http://127.0.0.1:7890"/></Field>}<button type="button" className="secondary-button update-network-test" disabled={busy} onClick={() => void test()}>{busy ? <LoaderCircle className="spin" size={15}/> : <CheckCircle2 size={15}/>} {busy ? "测试中…" : "测试连接"}</button></div>{result && <p className={`update-network-result ${result.ok ? "success" : "error"}`}>{result.message}</p>}</div>; }
+function UpdateControl({ component, autoCheckToken = 0, onAutoCheckComplete }: {
+    component: "app" | "reasonix";
+    autoCheckToken?: number;
+    onAutoCheckComplete?: () => void;
+}) { const [info, setInfo] = useState<UpdateInfo | null>(null); const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const lastAutomaticCheck = useRef(0); const check = useCallback(async (silent = false) => { setBusy(true); setError(""); try {
+    setInfo(await api<UpdateInfo>(`/updates/check?component=${component}`));
+}
+catch (reason) {
+    if (silent) {
+        console.debug("更新检查失败。", reason);
+    }
+    else
+        setError(updateNetworkError(reason));
+}
+finally {
+    setBusy(false);
+} }, [component]); useEffect(() => { if (autoCheckToken <= 0 || lastAutomaticCheck.current === autoCheckToken)
+    return; lastAutomaticCheck.current = autoCheckToken; void check(true).finally(() => onAutoCheckComplete?.()); }, [autoCheckToken, check, onAutoCheckComplete]); async function install() { if (!info?.canAutoUpdate || !confirm(`下载并安装 ${info.latest}？安装前会自动备份数据库，data 文件夹不会被替换。`))
+    return; setBusy(true); try {
+    const download = await api<{
+        version: string;
+        path: string;
+        sha256: string;
+        size: number;
+    }>("/updates/download", { method: "POST", ...jsonBody({}) });
+    const installed = await api<{
+        backup: string;
+    }>("/updates/install", { method: "POST", ...jsonBody(download) });
+    document.body.innerHTML = '<main class="stopped-page"><h1>正在安装更新</h1><p id="update-install-status"></p>';
+    const status = document.getElementById("update-install-status");
+    if (status)
+        status.textContent = `数据库已备份为 ${installed.backup}，程序校验完成后会自动重新启动。`;
+}
+catch (reason) {
+    window.alert(updateNetworkError(reason));
+    setBusy(false);
+} } if (!info && error)
+    return <div className="update-actions"><span className="update-error" role="status">{error}</span><button className="secondary-button" disabled={busy} onClick={() => void check()}>{busy ? "检查中…" : "重试"}</button></div>; if (!info)
+    return <button className="secondary-button" disabled={busy} onClick={() => void check()}>{busy ? "检查中…" : "检查更新"}</button>; if (!info.available && component === "app")
+    return <div className="update-actions" title={info.reason}><span className="secure-badge"><ShieldCheck size={14}/>已是最新版</span><a className="text-button" href={info.releaseUrl} target="_blank" rel="noreferrer">发布记录<ExternalLink size={13}/></a></div>; if (component === "reasonix" || !info.canAutoUpdate)
+    return <a className="secondary-button" title={info.reason} href={info.releaseUrl} target="_blank" rel="noreferrer">{info.latest ? `下载 ${info.latest}` : "打开官方发布页"}<ExternalLink size={14}/></a>; return <button className="primary-button" disabled={busy} onClick={() => void install()}>{busy ? "下载中…" : `一键更新到 ${info.latest}`}</button>; }
